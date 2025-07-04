@@ -1,0 +1,37 @@
+# Config file for Air (https://github.com/cosmtrek/air)
+
+[build]
+  cmd = "go build -o ./tmp/main"
+  bin = "./tmp/main"
+  full_bin = ""
+  include_ext = [".go"]
+  exclude_dir = ["docs", "tests", "tmp"]
+  exclude_file = []
+  exclude_regex = []
+  follow_symlink = false
+  dir = "."
+  stop_on_error = true
+
+[color]
+  main = "yellow"
+  watcher = "cyan"
+  build = "green"
+  runner = "magenta"
+  error = "red"
+
+[log]
+  time = true
+
+[dev]
+  delay = 1000 # ms
+  grace = 500  # ms
+  debug = false
+
+[run]
+  cmd = ""
+  args = []
+  env = ["GIN_MODE=debug"]
+  env_file = ".env"
+  user = ""
+  group = ""
+  dir = "." 

@@ -1,0 +1,62 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.cov
+
+# Go workspace file
+*.code-workspace
+
+# Dependency directories (remove the comment below if you use Go modules)
+/vendor/
+
+# Go build cache
+**/tmp/
+**/build/
+**/dist/
+**/bin/
+**/obj/
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.*
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Docker
+**/docker-compose.override.yml
+**/docker-compose.local.yml
+**/Dockerfile.*
+
+# Swagger generated files
+**/docs/swagger.json
+**/docs/swagger.yaml
+
+# Test output
+*.test
+*.coverprofile
+*.cover.out
+
+# Node/npm (if frontend is added later)
+node_modules/
+
+# Misc
+*.bak
+*.tmp 
