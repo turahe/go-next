@@ -8,7 +8,6 @@ require (
 	github.com/bytedance/sonic v1.13.3
 	github.com/casbin/casbin/v2 v2.108.0
 	github.com/casbin/gorm-adapter/v3 v3.32.0
-	github.com/casdoor/oss v1.8.0
 	github.com/getsentry/sentry-go v0.34.0
 	github.com/getsentry/sentry-go/logrus v0.34.0
 	github.com/gin-gonic/gin v1.10.1
@@ -24,6 +23,8 @@ require (
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.4
+	github.com/ulule/limiter/v3 v3.11.2
+	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.39.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 	gorm.io/driver/mysql v1.6.0
@@ -85,7 +86,7 @@ require (
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.0 // indirect
-	github.com/ulule/limiter/v3 v3.11.2 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/arch v0.18.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sync v0.15.0 // indirect

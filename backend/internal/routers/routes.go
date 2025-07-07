@@ -4,8 +4,6 @@ import (
 	"wordpress-go-next/backend/internal/http/controllers"
 	"wordpress-go-next/backend/internal/http/middleware"
 	"wordpress-go-next/backend/internal/services"
-	"wordpress-go-next/backend/pkg/config"
-	"wordpress-go-next/backend/pkg/storage"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,8 +11,8 @@ import (
 func RegisterRoutes(r *gin.Engine) {
 	authHandler := controllers.NewAuthHandler()
 	adminAuthHandler := controllers.NewAdminAuthHandler()
-	store, _ := storage.NewStorageService(config.GetConfig().Storage)
-	mediaSvc := services.NewMediaService(store)
+	// Services are now initialized in startup.go
+	mediaSvc := services.ServiceMgr.MediaService
 	postHandler := controllers.NewPostHandler(services.PostSvc)
 	categoryHandler := controllers.NewCategoryHandler(services.CategorySvc, mediaSvc)
 	commentHandler := controllers.NewCommentHandler(services.CommentSvc)
@@ -22,6 +20,10 @@ func RegisterRoutes(r *gin.Engine) {
 	roleHandler := controllers.NewRoleHandler(services.RoleSvc)
 	mediaHandler := controllers.NewMediaHandler(mediaSvc)
 	userRoleHandler := controllers.NewUserRoleHandler(services.UserRoleSvc)
+
+	// Initialize logger for tag handler
+	logger := services.GetLogger("TagHandler")
+	tagHandler := controllers.NewTagHandler(services.TagSvc, logger)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.String(200, "OK")
@@ -32,6 +34,25 @@ func RegisterRoutes(r *gin.Engine) {
 	r.POST("/api/login", authHandler.Login)
 
 	api := r.Group("/api/v1")
+
+	// Tags
+	tags := api.Group("/tags")
+	{
+		tags.GET("", tagHandler.ListTags)
+		tags.GET("/search", tagHandler.SearchTags)
+		tags.GET("/count", tagHandler.GetTagCount)
+		tags.GET("/slug/:slug", tagHandler.GetTagBySlug)
+		tags.GET("/:id", tagHandler.GetTagByID)
+		tags.POST("", middleware.JWTMiddleware(), tagHandler.CreateTag)
+		tags.PUT("/:id", middleware.JWTMiddleware(), tagHandler.UpdateTag)
+		tags.DELETE("/:id", middleware.JWTMiddleware(), tagHandler.DeleteTag)
+
+		// Entity tagging
+		tags.GET("/entity", tagHandler.GetTagsByEntity)
+		tags.POST("/entity", middleware.JWTMiddleware(), tagHandler.AddTagToEntity)
+		tags.DELETE("/entity", middleware.JWTMiddleware(), tagHandler.RemoveTagFromEntity)
+		tags.GET("/entities", tagHandler.GetEntitiesByTag)
+	}
 
 	// Posts
 	posts := api.Group("/posts")

@@ -1,42 +1,259 @@
 package services
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
 	"wordpress-go-next/backend/internal/models"
 	"wordpress-go-next/backend/pkg/database"
+	"wordpress-go-next/backend/pkg/redis"
 )
 
 type RoleService interface {
-	GetAllRoles() ([]models.Role, error)
-	GetRoleByID(id string) (*models.Role, error)
-	CreateRole(role *models.Role) error
-	UpdateRole(role *models.Role) error
-	DeleteRole(id string) error
+	GetAllRoles(ctx context.Context) ([]models.Role, error)
+	GetRoleByID(ctx context.Context, id string) (*models.Role, error)
+	GetRoleByName(ctx context.Context, name string) (*models.Role, error)
+	CreateRole(ctx context.Context, role *models.Role) error
+	UpdateRole(ctx context.Context, role *models.Role) error
+	DeleteRole(ctx context.Context, id string) error
+	GetRolesByUser(ctx context.Context, userID uint) ([]models.Role, error)
+	InvalidateRoleCache(ctx context.Context, roleID uint) error
 }
 
-type roleService struct{}
+type roleService struct {
+	Redis *redis.RedisService
+}
 
-func (s *roleService) GetAllRoles() ([]models.Role, error) {
+func NewRoleService(redisService *redis.RedisService) RoleService {
+	return &roleService{
+		Redis: redisService,
+	}
+}
+
+// Cache keys
+const (
+	roleCacheKeyPrefix     = "role:"
+	roleNameCacheKeyPrefix = "role:name:"
+	roleAllKeyPrefix       = "role:all:"
+	roleUserKeyPrefix      = "role:user:"
+)
+
+func (s *roleService) getRoleCacheKey(id uint) string {
+	return fmt.Sprintf("%s%d", roleCacheKeyPrefix, id)
+}
+
+func (s *roleService) getRoleNameCacheKey(name string) string {
+	return fmt.Sprintf("%s%s", roleNameCacheKeyPrefix, name)
+}
+
+func (s *roleService) getRoleAllCacheKey() string {
+	return roleAllKeyPrefix + "list"
+}
+
+func (s *roleService) getRoleUserCacheKey(userID uint) string {
+	return fmt.Sprintf("%s%d", roleUserKeyPrefix, userID)
+}
+
+func (s *roleService) GetAllRoles(ctx context.Context) ([]models.Role, error) {
+	cacheKey := s.getRoleAllCacheKey()
+
+	// Try to get from cache first
+	if cached, err := s.Redis.Get(ctx, cacheKey); err == nil {
+		var roles []models.Role
+		if err := json.Unmarshal([]byte(cached), &roles); err == nil {
+			return roles, nil
+		}
+	}
+
 	var roles []models.Role
-	err := database.DB.Find(&roles).Error
+	err := database.DB.WithContext(ctx).Find(&roles).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all roles: %w", err)
+	}
+
+	// Cache the result
+	if data, err := json.Marshal(roles); err == nil {
+		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+	}
+
 	return roles, err
 }
 
-func (s *roleService) GetRoleByID(id string) (*models.Role, error) {
+func (s *roleService) GetRoleByID(ctx context.Context, id string) (*models.Role, error) {
+	// Parse ID to uint for cache key
+	var roleID uint
+	if _, err := fmt.Sscanf(id, "%d", &roleID); err != nil {
+		return nil, fmt.Errorf("invalid role ID format: %w", err)
+	}
+
+	cacheKey := s.getRoleCacheKey(roleID)
+
+	// Try to get from cache first
+	if cached, err := s.Redis.Get(ctx, cacheKey); err == nil {
+		var role models.Role
+		if err := json.Unmarshal([]byte(cached), &role); err == nil {
+			return &role, nil
+		}
+	}
+
 	var role models.Role
-	err := database.DB.First(&role, id).Error
+	err := database.DB.WithContext(ctx).First(&role, id).Error
+	if err != nil {
+		return nil, fmt.Errorf("role not found: %w", err)
+	}
+
+	// Cache the result
+	if err := s.cacheRole(ctx, &role); err != nil {
+		fmt.Printf("Warning: failed to cache role %d: %v\n", role.ID, err)
+	}
+
 	return &role, err
 }
 
-func (s *roleService) CreateRole(role *models.Role) error {
-	return database.DB.Create(role).Error
+func (s *roleService) GetRoleByName(ctx context.Context, name string) (*models.Role, error) {
+	cacheKey := s.getRoleNameCacheKey(name)
+
+	// Try to get from cache first
+	if cached, err := s.Redis.Get(ctx, cacheKey); err == nil {
+		var role models.Role
+		if err := json.Unmarshal([]byte(cached), &role); err == nil {
+			return &role, nil
+		}
+	}
+
+	var role models.Role
+	err := database.DB.WithContext(ctx).Where("name = ?", name).First(&role).Error
+	if err != nil {
+		return nil, fmt.Errorf("role not found: %w", err)
+	}
+
+	// Cache the result
+	if err := s.cacheRole(ctx, &role); err != nil {
+		fmt.Printf("Warning: failed to cache role %d: %v\n", role.ID, err)
+	}
+
+	return &role, err
 }
 
-func (s *roleService) UpdateRole(role *models.Role) error {
-	return database.DB.Save(role).Error
+func (s *roleService) CreateRole(ctx context.Context, role *models.Role) error {
+	if err := database.DB.WithContext(ctx).Create(role).Error; err != nil {
+		return fmt.Errorf("failed to create role: %w", err)
+	}
+
+	// Cache the new role
+	if err := s.cacheRole(ctx, role); err != nil {
+		fmt.Printf("Warning: failed to cache role %d: %v\n", role.ID, err)
+	}
+
+	// Invalidate related caches
+	s.invalidateRelatedCaches(ctx)
+
+	return nil
 }
 
-func (s *roleService) DeleteRole(id string) error {
-	return database.DB.Delete(&models.Role{}, id).Error
+func (s *roleService) UpdateRole(ctx context.Context, role *models.Role) error {
+	if err := database.DB.WithContext(ctx).Save(role).Error; err != nil {
+		return fmt.Errorf("failed to update role: %w", err)
+	}
+
+	// Update cache
+	if err := s.cacheRole(ctx, role); err != nil {
+		fmt.Printf("Warning: failed to cache role %d: %v\n", role.ID, err)
+	}
+
+	// Invalidate related caches
+	s.invalidateRelatedCaches(ctx)
+
+	return nil
+}
+
+func (s *roleService) DeleteRole(ctx context.Context, id string) error {
+	// Get role first to invalidate related caches
+	var role models.Role
+	if err := database.DB.WithContext(ctx).First(&role, id).Error; err != nil {
+		return fmt.Errorf("role not found: %w", err)
+	}
+
+	if err := database.DB.WithContext(ctx).Delete(&models.Role{}, id).Error; err != nil {
+		return fmt.Errorf("failed to delete role: %w", err)
+	}
+
+	// Invalidate caches
+	s.invalidateRoleCaches(ctx, role.ID)
+	s.invalidateRelatedCaches(ctx)
+
+	return nil
+}
+
+func (s *roleService) GetRolesByUser(ctx context.Context, userID uint) ([]models.Role, error) {
+	cacheKey := s.getRoleUserCacheKey(userID)
+
+	// Try to get from cache first
+	if cached, err := s.Redis.Get(ctx, cacheKey); err == nil {
+		var roles []models.Role
+		if err := json.Unmarshal([]byte(cached), &roles); err == nil {
+			return roles, nil
+		}
+	}
+
+	var user models.User
+	err := database.DB.WithContext(ctx).Preload("Roles").First(&user, userID).Error
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	// Cache the result
+	if data, err := json.Marshal(user.Roles); err == nil {
+		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+	}
+
+	return user.Roles, err
+}
+
+func (s *roleService) InvalidateRoleCache(ctx context.Context, roleID uint) error {
+	s.invalidateRoleCaches(ctx, roleID)
+	return nil
+}
+
+// Helper methods
+func (s *roleService) cacheRole(ctx context.Context, role *models.Role) error {
+	data, err := json.Marshal(role)
+	if err != nil {
+		return err
+	}
+
+	// Cache by ID
+	cacheKey := s.getRoleCacheKey(role.ID)
+	if err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute); err != nil {
+		return err
+	}
+
+	// Cache by name
+	nameCacheKey := s.getRoleNameCacheKey(role.Name)
+	return s.Redis.SetWithTTL(ctx, nameCacheKey, string(data), 30*time.Minute)
+}
+
+func (s *roleService) invalidateRoleCaches(ctx context.Context, roleID uint) {
+	cacheKeys := []string{
+		s.getRoleCacheKey(roleID),
+	}
+
+	for _, key := range cacheKeys {
+		s.Redis.Delete(ctx, key)
+	}
+}
+
+func (s *roleService) invalidateRelatedCaches(ctx context.Context) {
+	// Invalidate all roles cache and user role caches
+	patterns := []string{
+		roleAllKeyPrefix + "*",
+		roleUserKeyPrefix + "*",
+	}
+
+	for _, pattern := range patterns {
+		s.Redis.DeletePattern(ctx, pattern)
+	}
 }
 
 var RoleSvc RoleService = &roleService{}

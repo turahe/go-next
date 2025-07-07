@@ -9,6 +9,7 @@ import (
 	"wordpress-go-next/backend/pkg/config"
 	"wordpress-go-next/backend/pkg/email"
 	"wordpress-go-next/backend/pkg/redis"
+	"wordpress-go-next/backend/pkg/storage"
 
 	"wordpress-go-next/backend/internal/http/middleware"
 
@@ -34,6 +35,11 @@ func RunServer(host, port string) {
 	if err := services.InitCasbin(); err != nil {
 		panic(err)
 	}
+
+	// Initialize services with Redis and logging
+	cfg := config.GetConfig()
+	store, _ := storage.NewStorageService(cfg.Storage)
+	services.InitializeServices(RedisClient, store, services.LogLevelInfo)
 
 	r := gin.Default()
 
