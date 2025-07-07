@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+	"wordpress-go-next/backend/internal/http/responses"
 	"wordpress-go-next/backend/internal/models"
 	"wordpress-go-next/backend/pkg/database"
 	"wordpress-go-next/backend/pkg/redis"
@@ -27,6 +28,7 @@ type TagService interface {
 	SearchTags(ctx context.Context, query string, limit, offset int) ([]models.Tag, int64, error)
 	GetTagCount(ctx context.Context) (int64, error)
 	InvalidateTagCache(ctx context.Context, tagID uint64) error
+	GetTagsWithPagination(ctx context.Context, page, perPage int, search, tagType string) (*responses.PaginationResponse, error)
 }
 
 type tagService struct {
@@ -478,6 +480,25 @@ func (s *tagService) invalidateRelatedCaches(ctx context.Context) {
 	for _, pattern := range patterns {
 		s.Redis.DeletePattern(ctx, pattern)
 	}
+}
+
+func (s *tagService) GetTagsWithPagination(ctx context.Context, page, perPage int, search, tagType string) (*responses.PaginationResponse, error) {
+	params := PaginationParams{Page: page, PerPage: perPage}
+	query := database.DB
+	if tagType != "" {
+		query = query.Where("type = ?", tagType)
+	}
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Where("name LIKE ? OR description LIKE ?", like, like)
+	}
+	var tags []models.Tag
+	result, err := (&BaseService{Redis: s.Redis}).PaginateWithCacheQuery(ctx, &models.Tag{}, params, &tags, "", 0, query)
+	if err != nil {
+		return nil, err
+	}
+	result.Data = tags
+	return result, nil
 }
 
 // Global tag service instance

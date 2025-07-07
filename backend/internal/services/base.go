@@ -8,6 +8,8 @@ import (
 	"wordpress-go-next/backend/internal/http/responses"
 	"wordpress-go-next/backend/pkg/database"
 	"wordpress-go-next/backend/pkg/redis"
+
+	"gorm.io/gorm"
 )
 
 type BaseService struct {
@@ -389,4 +391,59 @@ func (s *BaseService) GetListCacheKey(prefix string) string {
 
 func (s *BaseService) GetSearchCacheKey(prefix, query string) string {
 	return fmt.Sprintf("%s:search:%s", prefix, query)
+}
+
+// PaginateWithCacheQuery paginates results using a custom query (e.g., for search)
+func (s *BaseService) PaginateWithCacheQuery(ctx context.Context, model interface{}, params PaginationParams, out interface{}, cacheKey string, ttl time.Duration, query *gorm.DB) (*responses.PaginationResponse, error) {
+	if s.Redis != nil && cacheKey != "" && params.Page == 1 && params.PerPage == 10 && query.Statement.SQL.String() == "" {
+		// Only cache default queries (no search)
+		if err := s.Redis.GetCache(ctx, cacheKey, out); err == nil {
+			// Get total count
+			var count int64
+			db := database.DB.Model(model)
+			db.Count(&count)
+			return &responses.PaginationResponse{
+				Data:         out,
+				TotalCount:   count,
+				TotalPage:    (count + int64(params.PerPage) - 1) / int64(params.PerPage),
+				CurrentPage:  int64(params.Page),
+				LastPage:     (count + int64(params.PerPage) - 1) / int64(params.PerPage),
+				PerPage:      int64(params.PerPage),
+				NextPage:     int64(params.Page + 1),
+				PreviousPage: int64(params.Page - 1),
+			}, nil
+		}
+	}
+
+	// Count total
+	var count int64
+	if err := query.Model(model).Count(&count).Error; err != nil {
+		return nil, err
+	}
+
+	// Paginate
+	db := query.Model(model).Offset((params.Page - 1) * params.PerPage).Limit(params.PerPage)
+	if err := db.Find(out).Error; err != nil {
+		return nil, err
+	}
+
+	// Cache only if not a search
+	if s.Redis != nil && cacheKey != "" && params.Page == 1 && params.PerPage == 10 && query.Statement.SQL.String() == "" {
+		err := s.Redis.SetCache(ctx, cacheKey, out, ttl)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	totalPages := (count + int64(params.PerPage) - 1) / int64(params.PerPage)
+	return &responses.PaginationResponse{
+		Data:         out,
+		TotalCount:   count,
+		TotalPage:    totalPages,
+		CurrentPage:  int64(params.Page),
+		LastPage:     totalPages,
+		PerPage:      int64(params.PerPage),
+		NextPage:     int64(params.Page + 1),
+		PreviousPage: int64(params.Page - 1),
+	}, nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+	"wordpress-go-next/backend/internal/http/responses"
 	"wordpress-go-next/backend/internal/models"
 	"wordpress-go-next/backend/pkg/database"
 	"wordpress-go-next/backend/pkg/redis"
@@ -12,6 +13,7 @@ import (
 
 type RoleService interface {
 	GetAllRoles(ctx context.Context) ([]models.Role, error)
+	GetRolesWithPagination(ctx context.Context, page, perPage int, search string) (*responses.PaginationResponse, error)
 	GetRoleByID(ctx context.Context, id string) (*models.Role, error)
 	GetRoleByName(ctx context.Context, name string) (*models.Role, error)
 	CreateRole(ctx context.Context, role *models.Role) error
@@ -81,6 +83,28 @@ func (s *roleService) GetAllRoles(ctx context.Context) ([]models.Role, error) {
 	}
 
 	return roles, err
+}
+
+func (s *roleService) GetRolesWithPagination(ctx context.Context, page, perPage int, search string) (*responses.PaginationResponse, error) {
+	var roles []models.Role
+	params := PaginationParams{
+		Page:    page,
+		PerPage: perPage,
+	}
+
+	query := database.DB
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Where("name LIKE ?", like)
+	}
+
+	result, err := (&BaseService{Redis: s.Redis}).PaginateWithCacheQuery(ctx, &models.Role{}, params, &roles, "", 0, query)
+	if err != nil {
+		return nil, err
+	}
+
+	result.Data = roles
+	return result, nil
 }
 
 func (s *roleService) GetRoleByID(ctx context.Context, id string) (*models.Role, error) {

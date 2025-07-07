@@ -16,7 +16,7 @@ type PostService interface {
 	GetAllPosts(ctx context.Context) ([]models.Post, error)
 	GetPostByID(ctx context.Context, id string) (*models.Post, error)
 	GetPostBySlug(ctx context.Context, slug string) (*models.Post, error)
-	GetPostsWithPagination(ctx context.Context, page, perPage int) (*responses.PaginationResponse, error)
+	GetPostsWithPagination(ctx context.Context, page, perPage int, search string) (*responses.PaginationResponse, error)
 	GetPostsByCategory(ctx context.Context, categoryID string) ([]models.Post, error)
 	GetPostsByUser(ctx context.Context, userID string) ([]models.Post, error)
 	GetPublishedPosts(ctx context.Context) ([]models.Post, error)
@@ -94,7 +94,7 @@ func (s *postService) GetPostBySlug(ctx context.Context, slug string) (*models.P
 	return &post, nil
 }
 
-func (s *postService) GetPostsWithPagination(ctx context.Context, page, perPage int) (*responses.PaginationResponse, error) {
+func (s *postService) GetPostsWithPagination(ctx context.Context, page, perPage int, search string) (*responses.PaginationResponse, error) {
 	var posts []models.Post
 	cacheKey := s.GetListCacheKey(redis.PostCachePrefix)
 
@@ -103,7 +103,13 @@ func (s *postService) GetPostsWithPagination(ctx context.Context, page, perPage 
 		PerPage: perPage,
 	}
 
-	result, err := s.PaginateWithCache(ctx, &models.Post{}, params, &posts, cacheKey, redis.DefaultTTL)
+	query := database.DB
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Where("title LIKE ? OR excerpt LIKE ?", like, like)
+	}
+
+	result, err := s.PaginateWithCacheQuery(ctx, &models.Post{}, params, &posts, cacheKey, redis.DefaultTTL, query)
 	if err != nil {
 		return nil, err
 	}

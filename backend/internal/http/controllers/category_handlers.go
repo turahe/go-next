@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"wordpress-go-next/backend/internal/http/requests"
 
+	"wordpress-go-next/backend/internal/http/dto"
+	"wordpress-go-next/backend/internal/http/responses"
 	"wordpress-go-next/backend/internal/models"
 	"wordpress-go-next/backend/internal/services"
 
@@ -36,19 +38,46 @@ func NewCategoryHandler(categoryService services.CategoryService, mediaService s
 
 // GetCategories godoc
 // @Summary      List categories
-// @Description  Get all categories
+// @Description  Get categories with pagination and optional search
 // @Tags         categories
 // @Produce      json
-// @Success      200  {array}   models.Category
+// @Param        page     query     int     false  "Page number"  default(1)
+// @Param        perPage  query     int     false  "Items per page"  default(10)
+// @Param        search   query     string  false  "Search keyword"
+// @Success      200  {object}  responses.PaginationResponse
 // @Failure      500  {object}  map[string]string
 // @Router       /categories [get]
 func (h *categoryHandler) GetCategories(c *gin.Context) {
-	categories, err := h.CategoryService.GetAllCategories(context.Background())
+	pagination, err := requests.ParsePaginationFromQuery(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch categories"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid pagination parameters",
+		})
 		return
 	}
-	c.JSON(http.StatusOK, categories)
+
+	result, err := h.CategoryService.GetCategoriesWithPagination(context.Background(), pagination.Page, pagination.PerPage, pagination.Search)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to fetch categories",
+		})
+		return
+	}
+
+	categories, ok := result.Data.([]models.Category)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Invalid data format",
+		})
+		return
+	}
+	dtos := dto.ToCategoryDTOs(categories)
+	result.Data = dtos
+
+	c.JSON(http.StatusOK, result)
 }
 
 // GetCategory godoc
@@ -57,22 +86,32 @@ func (h *categoryHandler) GetCategories(c *gin.Context) {
 // @Tags         categories
 // @Produce      json
 // @Param        id   path      int  true  "Category ID"
-// @Success      200  {object}  models.Category
+// @Success      200  {object}  dto.CategoryDTO
 // @Failure      404  {object}  map[string]string
 // @Router       /categories/{id} [get]
 func (h *categoryHandler) GetCategory(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid category ID",
+		})
 		return
 	}
 	category, err := h.CategoryService.GetCategoryByID(context.Background(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Category not found"})
+		c.JSON(http.StatusNotFound, responses.CommonResponse{
+			ResponseCode:    http.StatusNotFound,
+			ResponseMessage: "Category not found",
+		})
 		return
 	}
-	c.JSON(http.StatusOK, category)
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Category fetched successfully",
+		Data:            dto.ToCategoryDTO(category),
+	})
 }
 
 // CreateCategory godoc
@@ -82,14 +121,17 @@ func (h *categoryHandler) GetCategory(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        category  body      models.Category  true  "Category to create"
-// @Success      201   {object}  models.Category
+// @Success      201   {object}  dto.CategoryDTO
 // @Failure      400   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
 // @Router       /categories [post]
 func (h *categoryHandler) CreateCategory(c *gin.Context) {
 	var reqParams requests.CategoryCreateRequest
 	if err := c.ShouldBind(&reqParams); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid request",
+		})
 		return
 	}
 	category := models.Category{
@@ -104,25 +146,45 @@ func (h *categoryHandler) CreateCategory(c *gin.Context) {
 	if err == nil && file != nil && fileHeader != nil {
 		media, err := h.MediaService.UploadAndSaveMedia(context.Background(), file, fileHeader, nil)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
+			c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+				ResponseCode:    http.StatusInternalServerError,
+				ResponseMessage: "Failed to upload image",
+			})
 			return
 		}
 		if err := h.CategoryService.CreateCategory(context.Background(), &category); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category"})
+			c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+				ResponseCode:    http.StatusInternalServerError,
+				ResponseMessage: "Failed to create category",
+			})
 			return
 		}
 		if err := h.MediaService.AssociateMedia(context.Background(), media.ID, category.ID, "categories", "image"); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to associate image with category"})
+			c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+				ResponseCode:    http.StatusInternalServerError,
+				ResponseMessage: "Failed to associate image with category",
+			})
 			return
 		}
-		c.JSON(http.StatusCreated, category)
+		c.JSON(http.StatusCreated, responses.CommonResponse{
+			ResponseCode:    http.StatusCreated,
+			ResponseMessage: "Category created successfully",
+			Data:            dto.ToCategoryDTO(&category),
+		})
 		return
 	}
 	if err := h.CategoryService.CreateCategory(context.Background(), &category); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to create category",
+		})
 		return
 	}
-	c.JSON(http.StatusCreated, category)
+	c.JSON(http.StatusCreated, responses.CommonResponse{
+		ResponseCode:    http.StatusCreated,
+		ResponseMessage: "Category created successfully",
+		Data:            dto.ToCategoryDTO(&category),
+	})
 }
 
 // UpdateCategory godoc
@@ -133,7 +195,7 @@ func (h *categoryHandler) CreateCategory(c *gin.Context) {
 // @Produce      json
 // @Param        id        path      int             true  "Category ID"
 // @Param        category  body      models.Category true  "Category to update"
-// @Success      200   {object}  models.Category
+// @Success      200   {object}  dto.CategoryDTO
 // @Failure      400   {object}  map[string]string
 // @Failure      404   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
@@ -142,24 +204,40 @@ func (h *categoryHandler) UpdateCategory(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid category ID",
+		})
 		return
 	}
 	var requestBody requests.CategoryUpdateRequest
 	category, err := h.CategoryService.GetCategoryByID(context.Background(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Category not found"})
+		c.JSON(http.StatusNotFound, responses.CommonResponse{
+			ResponseCode:    http.StatusNotFound,
+			ResponseMessage: "Category not found",
+		})
 		return
 	}
 	if err := c.ShouldBindJSON(requestBody); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid request",
+		})
 		return
 	}
 	if err := h.CategoryService.UpdateCategory(context.Background(), category); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update category"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to update category",
+		})
 		return
 	}
-	c.JSON(http.StatusOK, category)
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Category updated successfully",
+		Data:            dto.ToCategoryDTO(category),
+	})
 }
 
 // DeleteCategory godoc

@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"strconv"
 
+	"wordpress-go-next/backend/internal/http/dto"
 	"wordpress-go-next/backend/internal/http/requests"
+	"wordpress-go-next/backend/internal/http/responses"
 	"wordpress-go-next/backend/internal/models"
 	"wordpress-go-next/backend/internal/services"
 	"wordpress-go-next/backend/pkg/database"
@@ -37,21 +39,49 @@ func NewCommentHandler(commentService services.CommentService) CommentHandler {
 
 // GetCommentsByPost godoc
 // @Summary      List comments for a post
-// @Description  Get all comments for a specific post
+// @Description  Get comments for a specific post with pagination and optional search
 // @Tags         comments
 // @Produce      json
 // @Param        post_id   path      int  true  "Post ID"
-// @Success      200  {array}   models.Comment
+// @Param        page     query     int     false  "Page number"  default(1)
+// @Param        perPage  query     int     false  "Items per page"  default(10)
+// @Param        search   query     string  false  "Search keyword"
+// @Success      200  {object}  responses.PaginationResponse
+// @Failure      400  {object}  map[string]string
 // @Failure      500  {object}  map[string]string
 // @Router       /posts/{post_id}/comments [get]
 func (h *commentHandler) GetCommentsByPost(c *gin.Context) {
-	postID := c.Param("post_id")
-	comments, err := h.CommentService.GetCommentsByPost(c.Request.Context(), postID)
+	pagination, err := requests.ParsePaginationFromQuery(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid pagination parameters",
+		})
 		return
 	}
-	c.JSON(http.StatusOK, comments)
+
+	postID := c.Param("post_id")
+	result, err := h.CommentService.GetCommentsByPostWithPagination(c.Request.Context(), postID, pagination.Page, pagination.PerPage, pagination.Search)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to fetch comments",
+		})
+		return
+	}
+
+	comments, ok := result.Data.([]models.Comment)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Invalid data format",
+		})
+		return
+	}
+	dtos := dto.ToCommentDTOs(comments)
+	result.Data = dtos
+
+	c.JSON(http.StatusOK, result)
 }
 
 // GetComment godoc
@@ -60,17 +90,24 @@ func (h *commentHandler) GetCommentsByPost(c *gin.Context) {
 // @Tags         comments
 // @Produce      json
 // @Param        id   path      int  true  "Comment ID"
-// @Success      200  {object}  models.Comment
+// @Success      200  {object}  dto.CommentDTO
 // @Failure      404  {object}  map[string]string
 // @Router       /comments/{id} [get]
 func (h *commentHandler) GetComment(c *gin.Context) {
 	id := c.Param("id")
 	comment, err := h.CommentService.GetCommentByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"})
+		c.JSON(http.StatusNotFound, responses.CommonResponse{
+			ResponseCode:    http.StatusNotFound,
+			ResponseMessage: "Comment not found",
+		})
 		return
 	}
-	c.JSON(http.StatusOK, comment)
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Comment fetched successfully",
+		Data:            dto.ToCommentDTO(comment),
+	})
 }
 
 // CreateComment godoc
@@ -80,14 +117,17 @@ func (h *commentHandler) GetComment(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        comment  body      models.Comment  true  "Comment to create"
-// @Success      201   {object}  models.Comment
+// @Success      201   {object}  dto.CommentDTO
 // @Failure      400   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
 // @Router       /comments [post]
 func (h *commentHandler) CreateComment(c *gin.Context) {
 	var input requests.CommentCreateRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid request",
+		})
 		return
 	}
 	comment := models.Comment{
@@ -95,12 +135,18 @@ func (h *commentHandler) CreateComment(c *gin.Context) {
 		PostID: input.PostID,
 	}
 	if err := h.CommentService.CreateComment(c.Request.Context(), &comment, input.Content); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create comment"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to create comment",
+		})
 		return
 	}
-	// Preload Content
 	database.DB.Preload("Content").First(&comment, comment.ID)
-	c.JSON(http.StatusCreated, comment)
+	c.JSON(http.StatusCreated, responses.CommonResponse{
+		ResponseCode:    http.StatusCreated,
+		ResponseMessage: "Comment created successfully",
+		Data:            dto.ToCommentDTO(&comment),
+	})
 }
 
 // UpdateComment godoc
@@ -111,7 +157,7 @@ func (h *commentHandler) CreateComment(c *gin.Context) {
 // @Produce      json
 // @Param        id       path      int            true  "Comment ID"
 // @Param        comment  body      models.Comment true  "Comment to update"
-// @Success      200   {object}  models.Comment
+// @Success      200   {object}  dto.CommentDTO
 // @Failure      400   {object}  map[string]string
 // @Failure      404   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
@@ -120,22 +166,35 @@ func (h *commentHandler) UpdateComment(c *gin.Context) {
 	id := c.Param("id")
 	comment, err := h.CommentService.GetCommentByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"})
+		c.JSON(http.StatusNotFound, responses.CommonResponse{
+			ResponseCode:    http.StatusNotFound,
+			ResponseMessage: "Comment not found",
+		})
 		return
 	}
 	var input requests.CommentUpdateRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid request",
+		})
 		return
 	}
 	comment.UserID = input.UserID
 	comment.PostID = input.PostID
 	if err := h.CommentService.UpdateComment(c.Request.Context(), comment, input.Content); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update comment"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to update comment",
+		})
 		return
 	}
 	database.DB.Preload("Content").First(comment, comment.ID)
-	c.JSON(http.StatusOK, comment)
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Comment updated successfully",
+		Data:            dto.ToCommentDTO(comment),
+	})
 }
 
 // DeleteComment godoc
@@ -163,23 +222,33 @@ func (h *commentHandler) DeleteComment(c *gin.Context) {
 // @Produce      json
 // @Param        comment   body      models.Comment  true  "Comment to create"
 // @Param        parent_id query     int             false "Parent comment ID"
-// @Success      201   {object}  models.Comment
+// @Success      201   {object}  dto.CommentDTO
 // @Failure      400   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
 // @Router       /comments/nested [post]
 func (h *commentHandler) CreateCommentNested(c *gin.Context) {
 	var comment models.Comment
 	if err := c.ShouldBindJSON(&comment); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid request",
+		})
 		return
 	}
 	var parentID *uint64
 
 	if err := h.CommentService.CreateNested(c.Request.Context(), &comment, parentID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create comment (nested)"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to create comment (nested)",
+		})
 		return
 	}
-	c.JSON(http.StatusCreated, comment)
+	c.JSON(http.StatusCreated, responses.CommonResponse{
+		ResponseCode:    http.StatusCreated,
+		ResponseMessage: "Comment created successfully",
+		Data:            dto.ToCommentDTO(&comment),
+	})
 }
 
 // MoveCommentNested godoc

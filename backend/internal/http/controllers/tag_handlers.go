@@ -3,7 +3,9 @@ package controllers
 import (
 	"net/http"
 	"strconv"
+	"wordpress-go-next/backend/internal/http/dto"
 	"wordpress-go-next/backend/internal/http/requests"
+	"wordpress-go-next/backend/internal/http/responses"
 	"wordpress-go-next/backend/internal/models"
 	"wordpress-go-next/backend/internal/services"
 	"wordpress-go-next/backend/pkg/logger"
@@ -32,9 +34,9 @@ func NewTagHandler(tagService services.TagService, logger *logger.ServiceLogger)
 // @Accept json
 // @Produce json
 // @Param tag body requests.CreateTagRequest true "Tag information"
-// @Success 201 {object} responses.Response{data=models.Tag}
-// @Failure 400 {object} responses.Response
-// @Failure 500 {object} responses.Response
+// @Success 201 {object} responses.CommonResponse
+// @Failure 400 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags [post]
 func (h *TagHandler) CreateTag(c *gin.Context) {
 	var req requests.CreateTagRequest
@@ -47,10 +49,7 @@ func (h *TagHandler) CreateTag(c *gin.Context) {
 	// Validate request
 	if err := req.Validate(); err != nil {
 		h.logger.Error("CreateTag", "Validation failed", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{ResponseCode: http.StatusBadRequest, ResponseMessage: err.Error()})
 		return
 	}
 
@@ -62,10 +61,7 @@ func (h *TagHandler) CreateTag(c *gin.Context) {
 		h.logger.Error("CreateTag", "Failed to create tag", err, map[string]interface{}{
 			"tag_name": tag.Name,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to create tag",
-		})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{ResponseCode: http.StatusInternalServerError, ResponseMessage: "Failed to create tag"})
 		return
 	}
 
@@ -74,10 +70,10 @@ func (h *TagHandler) CreateTag(c *gin.Context) {
 		"tag_name": tag.Name,
 	})
 
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"message": "Tag created successfully",
-		"data":    tag,
+	c.JSON(http.StatusCreated, responses.CommonResponse{
+		ResponseCode:    http.StatusCreated,
+		ResponseMessage: "Tag created successfully",
+		Data:            dto.ToTagDTO(tag),
 	})
 }
 
@@ -87,9 +83,9 @@ func (h *TagHandler) CreateTag(c *gin.Context) {
 // @Tags tags
 // @Produce json
 // @Param id path int true "Tag ID"
-// @Success 200 {object} responses.Response{data=models.Tag}
-// @Failure 404 {object} responses.Response
-// @Failure 500 {object} responses.Response
+// @Success 200 {object} responses.CommonResponse
+// @Failure 404 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags/{id} [get]
 func (h *TagHandler) GetTagByID(c *gin.Context) {
 	idStr := c.Param("id")
@@ -98,10 +94,7 @@ func (h *TagHandler) GetTagByID(c *gin.Context) {
 		h.logger.Error("GetTagByID", "Invalid tag ID", err, map[string]interface{}{
 			"tag_id": idStr,
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid tag ID",
-		})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{ResponseCode: http.StatusBadRequest, ResponseMessage: "Invalid tag ID"})
 		return
 	}
 
@@ -110,16 +103,14 @@ func (h *TagHandler) GetTagByID(c *gin.Context) {
 		h.logger.Error("GetTagByID", "Failed to get tag", err, map[string]interface{}{
 			"tag_id": id,
 		})
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "Tag not found",
-		})
+		c.JSON(http.StatusNotFound, responses.CommonResponse{ResponseCode: http.StatusNotFound, ResponseMessage: "Tag not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    tag,
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Tag fetched successfully",
+		Data:            dto.ToTagDTO(tag),
 	})
 }
 
@@ -129,9 +120,9 @@ func (h *TagHandler) GetTagByID(c *gin.Context) {
 // @Tags tags
 // @Produce json
 // @Param slug path string true "Tag slug"
-// @Success 200 {object} responses.Response{data=models.Tag}
-// @Failure 404 {object} responses.Response
-// @Failure 500 {object} responses.Response
+// @Success 200 {object} responses.CommonResponse
+// @Failure 404 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags/slug/{slug} [get]
 func (h *TagHandler) GetTagBySlug(c *gin.Context) {
 	slug := c.Param("slug")
@@ -141,16 +132,14 @@ func (h *TagHandler) GetTagBySlug(c *gin.Context) {
 		h.logger.Error("GetTagBySlug", "Failed to get tag", err, map[string]interface{}{
 			"slug": slug,
 		})
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "Tag not found",
-		})
+		c.JSON(http.StatusNotFound, responses.CommonResponse{ResponseCode: http.StatusNotFound, ResponseMessage: "Tag not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    tag,
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Tag fetched successfully",
+		Data:            dto.ToTagDTO(tag),
 	})
 }
 
@@ -162,10 +151,10 @@ func (h *TagHandler) GetTagBySlug(c *gin.Context) {
 // @Produce json
 // @Param id path int true "Tag ID"
 // @Param tag body requests.UpdateTagRequest true "Updated tag information"
-// @Success 200 {object} responses.Response{data=models.Tag}
-// @Failure 400 {object} responses.Response
-// @Failure 404 {object} responses.Response
-// @Failure 500 {object} responses.Response
+// @Success 200 {object} responses.CommonResponse
+// @Failure 400 {object} responses.CommonResponse
+// @Failure 404 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags/{id} [put]
 func (h *TagHandler) UpdateTag(c *gin.Context) {
 	idStr := c.Param("id")
@@ -174,10 +163,7 @@ func (h *TagHandler) UpdateTag(c *gin.Context) {
 		h.logger.Error("UpdateTag", "Invalid tag ID", err, map[string]interface{}{
 			"tag_id": idStr,
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid tag ID",
-		})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{ResponseCode: http.StatusBadRequest, ResponseMessage: "Invalid tag ID"})
 		return
 	}
 
@@ -191,10 +177,7 @@ func (h *TagHandler) UpdateTag(c *gin.Context) {
 	// Validate request
 	if err := req.Validate(); err != nil {
 		h.logger.Error("UpdateTag", "Validation failed", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{ResponseCode: http.StatusBadRequest, ResponseMessage: err.Error()})
 		return
 	}
 
@@ -204,10 +187,7 @@ func (h *TagHandler) UpdateTag(c *gin.Context) {
 		h.logger.Error("UpdateTag", "Tag not found", err, map[string]interface{}{
 			"tag_id": id,
 		})
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "Tag not found",
-		})
+		c.JSON(http.StatusNotFound, responses.CommonResponse{ResponseCode: http.StatusNotFound, ResponseMessage: "Tag not found"})
 		return
 	}
 
@@ -220,10 +200,7 @@ func (h *TagHandler) UpdateTag(c *gin.Context) {
 		h.logger.Error("UpdateTag", "Failed to update tag", err, map[string]interface{}{
 			"tag_id": id,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to update tag",
-		})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{ResponseCode: http.StatusInternalServerError, ResponseMessage: "Failed to update tag"})
 		return
 	}
 
@@ -231,10 +208,10 @@ func (h *TagHandler) UpdateTag(c *gin.Context) {
 		"tag_id": id,
 	})
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Tag updated successfully",
-		"data":    updatedTag,
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Tag updated successfully",
+		Data:            dto.ToTagDTO(updatedTag),
 	})
 }
 
@@ -244,10 +221,10 @@ func (h *TagHandler) UpdateTag(c *gin.Context) {
 // @Tags tags
 // @Produce json
 // @Param id path int true "Tag ID"
-// @Success 200 {object} responses.Response
-// @Failure 400 {object} responses.Response
-// @Failure 404 {object} responses.Response
-// @Failure 500 {object} responses.Response
+// @Success 200 {object} responses.CommonResponse
+// @Failure 400 {object} responses.CommonResponse
+// @Failure 404 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags/{id} [delete]
 func (h *TagHandler) DeleteTag(c *gin.Context) {
 	idStr := c.Param("id")
@@ -256,10 +233,7 @@ func (h *TagHandler) DeleteTag(c *gin.Context) {
 		h.logger.Error("DeleteTag", "Invalid tag ID", err, map[string]interface{}{
 			"tag_id": idStr,
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid tag ID",
-		})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{ResponseCode: http.StatusBadRequest, ResponseMessage: "Invalid tag ID"})
 		return
 	}
 
@@ -267,10 +241,7 @@ func (h *TagHandler) DeleteTag(c *gin.Context) {
 		h.logger.Error("DeleteTag", "Failed to delete tag", err, map[string]interface{}{
 			"tag_id": id,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to delete tag",
-		})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{ResponseCode: http.StatusInternalServerError, ResponseMessage: "Failed to delete tag"})
 		return
 	}
 
@@ -278,10 +249,7 @@ func (h *TagHandler) DeleteTag(c *gin.Context) {
 		"tag_id": id,
 	})
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Tag deleted successfully",
-	})
+	c.JSON(http.StatusOK, responses.CommonResponse{ResponseCode: http.StatusOK, ResponseMessage: "Tag deleted successfully"})
 }
 
 // ListTags handles listing tags with filters
@@ -293,111 +261,104 @@ func (h *TagHandler) DeleteTag(c *gin.Context) {
 // @Param active query bool false "Active status filter"
 // @Param limit query int false "Limit (default: 10, max: 100)"
 // @Param offset query int false "Offset (default: 0)"
-// @Success 200 {object} responses.Response{data=[]models.Tag}
-// @Failure 500 {object} responses.Response
+// @Success 200 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags [get]
+// ListTags godoc
+// @Summary      List tags
+// @Description  Get tags with pagination and optional search
+// @Tags         tags
+// @Produce      json
+// @Param        page     query     int     false  "Page number"  default(1)
+// @Param        perPage  query     int     false  "Items per page"  default(10)
+// @Param        type     query     string  false "Tag type filter"
+// @Param        search   query     string  false  "Search keyword"
+// @Success      200  {object}  responses.PaginationResponse
+// @Failure      400  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /api/tags [get]
 func (h *TagHandler) ListTags(c *gin.Context) {
-	var req requests.TagListRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		h.logger.Error("ListTags", "Failed to bind query", err)
-		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
+	pagination, err := requests.ParsePaginationFromQuery(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{ResponseCode: http.StatusBadRequest, ResponseMessage: "Invalid pagination parameters"})
 		return
 	}
 
-	// Set defaults
-	if req.Limit == 0 {
-		req.Limit = 10
-	}
-
-	var tags []models.Tag
-	var err error
-
-	if req.Active != nil && *req.Active {
-		tags, err = h.tagService.GetActiveTags(c.Request.Context())
-	} else {
-		tags, err = h.tagService.GetAllTags(c.Request.Context(), req.Type)
-	}
-
+	tagType := c.Query("type")
+	result, err := h.tagService.GetTagsWithPagination(c.Request.Context(), pagination.Page, pagination.PerPage, pagination.Search, tagType)
 	if err != nil {
 		h.logger.Error("ListTags", "Failed to get tags", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to get tags",
-		})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{ResponseCode: http.StatusInternalServerError, ResponseMessage: "Failed to get tags"})
 		return
 	}
 
-	// Apply pagination
-	start := req.Offset
-	end := start + req.Limit
-	if end > len(tags) {
-		end = len(tags)
+	tags, ok := result.Data.([]models.Tag)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{ResponseCode: http.StatusInternalServerError, ResponseMessage: "Invalid data format"})
+		return
 	}
-	if start > len(tags) {
-		start = len(tags)
-	}
+	result.Data = dto.ToTagDTOs(tags)
 
-	paginatedTags := tags[start:end]
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    paginatedTags,
-		"meta": map[string]interface{}{
-			"total":  len(tags),
-			"limit":  req.Limit,
-			"offset": req.Offset,
-		},
-	})
+	c.JSON(http.StatusOK, result)
 }
 
 // SearchTags handles tag search
 // @Summary Search tags
-// @Description Search tags by name or description
+// @Description Search tags by name or description with pagination
 // @Tags tags
 // @Produce json
 // @Param query query string true "Search query"
 // @Param type query string false "Tag type filter"
-// @Param limit query int false "Limit (default: 10, max: 100)"
-// @Param offset query int false "Offset (default: 0)"
-// @Success 200 {object} responses.Response{data=[]models.Tag}
-// @Failure 400 {object} responses.Response
-// @Failure 500 {object} responses.Response
+// @Param page query int false "Page number" default(1)
+// @Param perPage query int false "Items per page" default(10)
+// @Success 200 {object} responses.PaginationResponse
+// @Failure 400 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags/search [get]
 func (h *TagHandler) SearchTags(c *gin.Context) {
-	var req requests.TagSearchRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		h.logger.Error("SearchTags", "Failed to bind query", err)
-		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
+	pagination, err := requests.ParsePaginationFromQuery(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{ResponseCode: http.StatusBadRequest, ResponseMessage: "Invalid pagination parameters"})
 		return
 	}
 
-	// Set defaults
-	if req.Limit == 0 {
-		req.Limit = 10
+	query := c.Query("query")
+	if query == "" {
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{ResponseCode: http.StatusBadRequest, ResponseMessage: "Search query is required"})
+		return
 	}
 
-	tags, total, err := h.tagService.SearchTags(c.Request.Context(), req.Query, req.Limit, req.Offset)
+	tags, total, err := h.tagService.SearchTags(c.Request.Context(), query, pagination.PerPage, pagination.GetOffset())
 	if err != nil {
 		h.logger.Error("SearchTags", "Failed to search tags", err, map[string]interface{}{
-			"query": req.Query,
+			"query": query,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to search tags",
-		})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{ResponseCode: http.StatusInternalServerError, ResponseMessage: "Failed to search tags"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    tags,
-		"meta": map[string]interface{}{
-			"total":  total,
-			"limit":  req.Limit,
-			"offset": req.Offset,
-			"query":  req.Query,
-		},
-	})
+	// Create pagination response
+	totalPages := (int(total) + pagination.PerPage - 1) / pagination.PerPage
+	result := &responses.PaginationResponse{
+		Data:         dto.ToTagDTOs(tags),
+		TotalCount:   total,
+		TotalPage:    int64(totalPages),
+		CurrentPage:  int64(pagination.Page),
+		LastPage:     int64(totalPages),
+		PerPage:      int64(pagination.PerPage),
+		NextPage:     int64(pagination.Page + 1),
+		PreviousPage: int64(pagination.Page - 1),
+	}
+
+	// Adjust next/previous page
+	if pagination.Page >= totalPages {
+		result.NextPage = 0
+	}
+	if pagination.Page <= 1 {
+		result.PreviousPage = 0
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // AddTagToEntity handles adding a tag to an entity
@@ -407,9 +368,9 @@ func (h *TagHandler) SearchTags(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body requests.AddTagToEntityRequest true "Tag entity request"
-// @Success 200 {object} responses.Response
-// @Failure 400 {object} responses.Response
-// @Failure 500 {object} responses.Response
+// @Success 200 {object} responses.CommonResponse
+// @Failure 400 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags/entity [post]
 func (h *TagHandler) AddTagToEntity(c *gin.Context) {
 	var req requests.AddTagToEntityRequest
@@ -425,10 +386,7 @@ func (h *TagHandler) AddTagToEntity(c *gin.Context) {
 			"entity_id":   req.EntityID,
 			"entity_type": req.EntityType,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to add tag to entity",
-		})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{ResponseCode: http.StatusInternalServerError, ResponseMessage: "Failed to add tag to entity"})
 		return
 	}
 
@@ -438,10 +396,7 @@ func (h *TagHandler) AddTagToEntity(c *gin.Context) {
 		"entity_type": req.EntityType,
 	})
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Tag added to entity successfully",
-	})
+	c.JSON(http.StatusOK, responses.CommonResponse{ResponseCode: http.StatusOK, ResponseMessage: "Tag added to entity successfully"})
 }
 
 // RemoveTagFromEntity handles removing a tag from an entity
@@ -451,9 +406,9 @@ func (h *TagHandler) AddTagToEntity(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body requests.RemoveTagFromEntityRequest true "Remove tag entity request"
-// @Success 200 {object} responses.Response
-// @Failure 400 {object} responses.Response
-// @Failure 500 {object} responses.Response
+// @Success 200 {object} responses.CommonResponse
+// @Failure 400 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags/entity [delete]
 func (h *TagHandler) RemoveTagFromEntity(c *gin.Context) {
 	var req requests.RemoveTagFromEntityRequest
@@ -469,10 +424,7 @@ func (h *TagHandler) RemoveTagFromEntity(c *gin.Context) {
 			"entity_id":   req.EntityID,
 			"entity_type": req.EntityType,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to remove tag from entity",
-		})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{ResponseCode: http.StatusInternalServerError, ResponseMessage: "Failed to remove tag from entity"})
 		return
 	}
 
@@ -482,10 +434,7 @@ func (h *TagHandler) RemoveTagFromEntity(c *gin.Context) {
 		"entity_type": req.EntityType,
 	})
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Tag removed from entity successfully",
-	})
+	c.JSON(http.StatusOK, responses.CommonResponse{ResponseCode: http.StatusOK, ResponseMessage: "Tag removed from entity successfully"})
 }
 
 // GetTagsByEntity handles getting tags for a specific entity
@@ -495,9 +444,9 @@ func (h *TagHandler) RemoveTagFromEntity(c *gin.Context) {
 // @Produce json
 // @Param entity_id query int true "Entity ID"
 // @Param entity_type query string true "Entity type"
-// @Success 200 {object} responses.Response{data=[]models.Tag}
-// @Failure 400 {object} responses.Response
-// @Failure 500 {object} responses.Response
+// @Success 200 {object} responses.CommonResponse
+// @Failure 400 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags/entity [get]
 func (h *TagHandler) GetTagsByEntity(c *gin.Context) {
 	entityIDStr := c.Query("entity_id")
@@ -508,18 +457,12 @@ func (h *TagHandler) GetTagsByEntity(c *gin.Context) {
 		h.logger.Error("GetTagsByEntity", "Invalid entity ID", err, map[string]interface{}{
 			"entity_id": entityIDStr,
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid entity ID",
-		})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{ResponseCode: http.StatusBadRequest, ResponseMessage: "Invalid entity ID"})
 		return
 	}
 
 	if entityType == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Entity type is required",
-		})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{ResponseCode: http.StatusBadRequest, ResponseMessage: "Entity type is required"})
 		return
 	}
 
@@ -529,16 +472,14 @@ func (h *TagHandler) GetTagsByEntity(c *gin.Context) {
 			"entity_id":   entityID,
 			"entity_type": entityType,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to get entity tags",
-		})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{ResponseCode: http.StatusInternalServerError, ResponseMessage: "Failed to get entity tags"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    tags,
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Tags fetched successfully",
+		Data:            dto.ToTagDTOs(tags),
 	})
 }
 
@@ -551,9 +492,9 @@ func (h *TagHandler) GetTagsByEntity(c *gin.Context) {
 // @Param entity_type query string true "Entity type"
 // @Param limit query int false "Limit (default: 10, max: 100)"
 // @Param offset query int false "Offset (default: 0)"
-// @Success 200 {object} responses.Response{data=[]map[string]interface{}}
-// @Failure 400 {object} responses.Response
-// @Failure 500 {object} responses.Response
+// @Success 200 {object} responses.CommonResponse
+// @Failure 400 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags/entities [get]
 func (h *TagHandler) GetEntitiesByTag(c *gin.Context) {
 	var req requests.GetEntitiesByTagRequest
@@ -568,29 +509,20 @@ func (h *TagHandler) GetEntitiesByTag(c *gin.Context) {
 		req.Limit = 10
 	}
 
-	entities, total, err := h.tagService.GetEntitiesByTag(c.Request.Context(), uint64(req.TagID), req.EntityType, req.Limit, req.Offset)
+	entities, _, err := h.tagService.GetEntitiesByTag(c.Request.Context(), uint64(req.TagID), req.EntityType, req.Limit, req.Offset)
 	if err != nil {
 		h.logger.Error("GetEntitiesByTag", "Failed to get entities by tag", err, map[string]interface{}{
 			"tag_id":      req.TagID,
 			"entity_type": req.EntityType,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to get entities by tag",
-		})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{ResponseCode: http.StatusInternalServerError, ResponseMessage: "Failed to get entities by tag"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    entities,
-		"meta": map[string]interface{}{
-			"total":       total,
-			"limit":       req.Limit,
-			"offset":      req.Offset,
-			"tag_id":      req.TagID,
-			"entity_type": req.EntityType,
-		},
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Tags fetched successfully",
+		Data:            entities,
 	})
 }
 
@@ -599,22 +531,16 @@ func (h *TagHandler) GetEntitiesByTag(c *gin.Context) {
 // @Description Get the total number of tags
 // @Tags tags
 // @Produce json
-// @Success 200 {object} responses.Response{data=int64}
-// @Failure 500 {object} responses.Response
+// @Success 200 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
 // @Router /api/tags/count [get]
 func (h *TagHandler) GetTagCount(c *gin.Context) {
 	count, err := h.tagService.GetTagCount(c.Request.Context())
 	if err != nil {
 		h.logger.Error("GetTagCount", "Failed to get tag count", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to get tag count",
-		})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{ResponseCode: http.StatusInternalServerError, ResponseMessage: "Failed to get tag count"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    count,
-	})
+	c.JSON(http.StatusOK, responses.CommonResponse{ResponseCode: http.StatusOK, Data: count})
 }

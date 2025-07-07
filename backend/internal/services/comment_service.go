@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"wordpress-go-next/backend/internal/http/responses"
 	"wordpress-go-next/backend/internal/models"
 	"wordpress-go-next/backend/pkg/database"
 	"wordpress-go-next/backend/pkg/redis"
@@ -15,6 +16,7 @@ import (
 
 type CommentService interface {
 	GetCommentsByPost(ctx context.Context, postID string) ([]models.Comment, error)
+	GetCommentsByPostWithPagination(ctx context.Context, postID string, page, perPage int, search string) (*responses.PaginationResponse, error)
 	GetCommentByID(ctx context.Context, id string) (*models.Comment, error)
 	CreateComment(ctx context.Context, comment *models.Comment, content string) error
 	UpdateComment(ctx context.Context, comment *models.Comment, content string) error
@@ -113,6 +115,28 @@ func (s *commentService) GetCommentsByPost(ctx context.Context, postID string) (
 	}
 
 	return comments, err
+}
+
+func (s *commentService) GetCommentsByPostWithPagination(ctx context.Context, postID string, page, perPage int, search string) (*responses.PaginationResponse, error) {
+	var comments []models.Comment
+	params := PaginationParams{
+		Page:    page,
+		PerPage: perPage,
+	}
+
+	query := database.DB.Where("post_id = ?", postID)
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Joins("JOIN contents ON contents.model_id = comments.id AND contents.model_type = ?", "comment").Where("contents.content LIKE ?", like)
+	}
+
+	result, err := (&BaseService{Redis: s.Redis}).PaginateWithCacheQuery(ctx, &models.Comment{}, params, &comments, "", 0, query)
+	if err != nil {
+		return nil, err
+	}
+
+	result.Data = comments
+	return result, nil
 }
 
 func (s *commentService) GetCommentByID(ctx context.Context, id string) (*models.Comment, error) {

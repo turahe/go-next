@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"wordpress-go-next/backend/internal/http/dto"
 	"wordpress-go-next/backend/internal/http/requests"
+	"wordpress-go-next/backend/internal/http/responses"
 	"wordpress-go-next/backend/internal/models"
 	"wordpress-go-next/backend/internal/services"
 
@@ -38,14 +40,17 @@ func NewMediaHandler(mediaService services.MediaService) MediaHandler {
 // @Accept       multipart/form-data
 // @Produce      json
 // @Param        file  formData  file  true  "Media file"
-// @Success      201   {object}  models.Media
+// @Success      201   {object}  dto.MediaDTO
 // @Failure      400   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
 // @Router       /media/upload [post]
 func (h *mediaHandler) UploadMedia(c *gin.Context) {
 	file, fileHeader, err := c.Request.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "File is required"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "File is required",
+		})
 		return
 	}
 	defer file.Close()
@@ -57,10 +62,17 @@ func (h *mediaHandler) UploadMedia(c *gin.Context) {
 	}
 	media, err := h.MediaService.UploadAndSaveMedia(c.Request.Context(), file, fileHeader, createdBy)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: err.Error(),
+		})
 		return
 	}
-	c.JSON(http.StatusCreated, media)
+	c.JSON(http.StatusCreated, responses.CommonResponse{
+		ResponseCode:    http.StatusCreated,
+		ResponseMessage: "Media uploaded successfully",
+		Data:            dto.ToMediaDTO(media),
+	})
 }
 
 // AssociateMedia godoc
@@ -97,14 +109,17 @@ func (h *mediaHandler) AssociateMedia(c *gin.Context) {
 // @Produce      json
 // @Param        media     body      models.Media  true  "Media to create"
 // @Param        parent_id query     int           false "Parent media ID"
-// @Success      201   {object}  models.Media
+// @Success      201   {object}  dto.MediaDTO
 // @Failure      400   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
 // @Router       /media/nested [post]
 func (h *mediaHandler) CreateMediaNested(c *gin.Context) {
 	var input requests.MediaCreateRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid request",
+		})
 		return
 	}
 	media := models.Media{
@@ -119,10 +134,17 @@ func (h *mediaHandler) CreateMediaNested(c *gin.Context) {
 		}
 	}
 	if err := h.MediaService.CreateNested(c.Request.Context(), &media, parentID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create media (nested)"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to create media (nested)",
+		})
 		return
 	}
-	c.JSON(http.StatusCreated, media)
+	c.JSON(http.StatusCreated, responses.CommonResponse{
+		ResponseCode:    http.StatusCreated,
+		ResponseMessage: "Media created successfully",
+		Data:            dto.ToMediaDTO(&media),
+	})
 }
 
 // MoveMediaNested godoc
@@ -184,21 +206,35 @@ func (h *mediaHandler) DeleteMediaNested(c *gin.Context) {
 // @Tags         media
 // @Produce      json
 // @Param        id   path      int  true  "Media ID"
-// @Success      200  {array}   models.Media
+// @Success      200  {array}   dto.MediaDTO
 // @Failure      404  {object}  map[string]string
 // @Router       /media/{id}/siblings [get]
 func (h *mediaHandler) GetSiblingMedia(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid media ID"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid media ID",
+		})
 		return
 	}
 	siblings, err := h.MediaService.GetSiblingMedia(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch siblings"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to fetch siblings",
+		})
 		return
 	}
-	c.JSON(http.StatusOK, siblings)
+	dtos := make([]*dto.MediaDTO, len(siblings))
+	for i, m := range siblings {
+		dtos[i] = dto.ToMediaDTO(&m)
+	}
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Siblings fetched successfully",
+		Data:            dtos,
+	})
 }
 
 // GetParentMedia godoc
@@ -207,25 +243,38 @@ func (h *mediaHandler) GetSiblingMedia(c *gin.Context) {
 // @Tags         media
 // @Produce      json
 // @Param        id   path      int  true  "Media ID"
-// @Success      200  {object}   models.Media
+// @Success      200  {object}   dto.MediaDTO
 // @Failure      404  {object}  map[string]string
 // @Router       /media/{id}/parent [get]
 func (h *mediaHandler) GetParentMedia(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid media ID"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid media ID",
+		})
 		return
 	}
 	parent, err := h.MediaService.GetParentMedia(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch parent"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to fetch parent",
+		})
 		return
 	}
 	if parent == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "No parent (root)"})
+		c.JSON(http.StatusNotFound, responses.CommonResponse{
+			ResponseCode:    http.StatusNotFound,
+			ResponseMessage: "No parent (root)",
+		})
 		return
 	}
-	c.JSON(http.StatusOK, parent)
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Parent fetched successfully",
+		Data:            dto.ToMediaDTO(parent),
+	})
 }
 
 // GetDescendantMedia godoc
@@ -234,21 +283,35 @@ func (h *mediaHandler) GetParentMedia(c *gin.Context) {
 // @Tags         media
 // @Produce      json
 // @Param        id   path      int  true  "Media ID"
-// @Success      200  {array}   models.Media
+// @Success      200  {array}   dto.MediaDTO
 // @Failure      404  {object}  map[string]string
 // @Router       /media/{id}/descendants [get]
 func (h *mediaHandler) GetDescendantMedia(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid media ID"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid media ID",
+		})
 		return
 	}
 	descendants, err := h.MediaService.GetDescendantMedia(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch descendants"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to fetch descendants",
+		})
 		return
 	}
-	c.JSON(http.StatusOK, descendants)
+	dtos := make([]*dto.MediaDTO, len(descendants))
+	for i, m := range descendants {
+		dtos[i] = dto.ToMediaDTO(&m)
+	}
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Descendants fetched successfully",
+		Data:            dtos,
+	})
 }
 
 // GetChildrenMedia godoc
@@ -257,19 +320,33 @@ func (h *mediaHandler) GetDescendantMedia(c *gin.Context) {
 // @Tags         media
 // @Produce      json
 // @Param        id   path      int  true  "Media ID"
-// @Success      200  {array}   models.Media
+// @Success      200  {array}   dto.MediaDTO
 // @Failure      404  {object}  map[string]string
 // @Router       /media/{id}/children [get]
 func (h *mediaHandler) GetChildrenMedia(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid media ID"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid media ID",
+		})
 		return
 	}
 	children, err := h.MediaService.GetChildrenMedia(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch children"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to fetch children",
+		})
 		return
 	}
-	c.JSON(http.StatusOK, children)
+	dtos := make([]*dto.MediaDTO, len(children))
+	for i, m := range children {
+		dtos[i] = dto.ToMediaDTO(&m)
+	}
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Children fetched successfully",
+		Data:            dtos,
+	})
 }

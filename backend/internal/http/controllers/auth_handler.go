@@ -25,7 +25,18 @@ func NewAuthHandler(authService services.AuthService) *AuthHandler {
 	return &AuthHandler{AuthService: authService}
 }
 
-// Register user (real implementation)
+// Register godoc
+// @Summary Register a new user
+// @Description Register a new user with username, email, password, and optional role
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param data body requests.AuthRequest true "User registration data"
+// @Success 201 {object} responses.CommonResponse
+// @Failure 400 {object} responses.CommonResponse
+// @Failure 409 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
+// @Router /users/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req requests.AuthRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -131,7 +142,18 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	})
 }
 
-// Login and issue JWT + refresh token
+// Login godoc
+// @Summary Login and get JWT tokens
+// @Description Login with username and password to receive JWT and refresh token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param data body requests.LoginRequest true "Login data"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /users/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req requests.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -156,38 +178,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
-// Request password reset (stub)
-func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"message": "RequestPasswordReset not implemented"})
-}
-
-// Reset password (stub)
-func (h *AuthHandler) ResetPassword(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"message": "ResetPassword not implemented"})
-}
-
-// Refresh JWT using refresh token
-func (h *AuthHandler) RefreshToken(c *gin.Context) {
-	var req struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		return
-	}
-	accessToken, refreshToken, err := h.AuthService.RefreshTokens(req.RefreshToken)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"access_token":  accessToken,
-		"refresh_token": refreshToken,
-		"expires_in":    time.Now().Add(15 * time.Minute).Unix(),
-	})
-}
-
-// Email/phone verification stubs
+// RequestEmailVerification godoc
+// @Summary Request email verification
+// @Description Send a verification email to the user's email address
+// @Tags auth
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} responses.CommonResponse
+// @Failure 401 {object} responses.CommonResponse
+// @Failure 404 {object} responses.CommonResponse
+// @Failure 429 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
+// @Router /users/{id}/request-email-verification [post]
 func (h *AuthHandler) RequestEmailVerification(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
@@ -246,10 +248,20 @@ func (h *AuthHandler) RequestEmailVerification(c *gin.Context) {
 	})
 }
 
+// VerifyEmail godoc
+// @Summary Verify email
+// @Description Verify user's email using a token sent to their email
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param data body requests.EmailVerificationRequest true "Verification token"
+// @Success 200 {object} responses.CommonResponse
+// @Failure 400 {object} responses.CommonResponse
+// @Failure 404 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
+// @Router /users/{id}/verify-email [post]
 func (h *AuthHandler) VerifyEmail(c *gin.Context) {
-	var req struct {
-		Token string `json:"token"`
-	}
+	var req requests.EmailVerificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.Token == "" {
 		c.JSON(http.StatusBadRequest, responses.CommonResponse{
 			ResponseCode:    http.StatusBadRequest,
@@ -287,6 +299,18 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 	})
 }
 
+// RequestPhoneVerification godoc
+// @Summary Request phone verification
+// @Description Send a phone verification code via WhatsApp
+// @Tags auth
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} responses.CommonResponse
+// @Failure 401 {object} responses.CommonResponse
+// @Failure 404 {object} responses.CommonResponse
+// @Failure 429 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
+// @Router /users/{id}/request-phone-verification [post]
 func (h *AuthHandler) RequestPhoneVerification(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
@@ -341,10 +365,20 @@ func (h *AuthHandler) RequestPhoneVerification(c *gin.Context) {
 	})
 }
 
+// VerifyPhone godoc
+// @Summary Verify phone
+// @Description Verify user's phone using a code sent via WhatsApp
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param data body requests.PhoneVerificationRequest true "Verification token"
+// @Success 200 {object} responses.CommonResponse
+// @Failure 400 {object} responses.CommonResponse
+// @Failure 404 {object} responses.CommonResponse
+// @Failure 500 {object} responses.CommonResponse
+// @Router /users/{id}/verify-phone [post]
 func (h *AuthHandler) VerifyPhone(c *gin.Context) {
-	var req struct {
-		Token string `json:"token"`
-	}
+	var req requests.PhoneVerificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.Token == "" {
 		c.JSON(http.StatusBadRequest, responses.CommonResponse{
 			ResponseCode:    http.StatusBadRequest,
@@ -379,5 +413,56 @@ func (h *AuthHandler) VerifyPhone(c *gin.Context) {
 	c.JSON(http.StatusOK, responses.CommonResponse{
 		ResponseCode:    http.StatusOK,
 		ResponseMessage: "Phone verified successfully",
+	})
+}
+
+// RequestPasswordReset godoc
+// @Summary Request password reset
+// @Description Request a password reset email
+// @Tags auth
+// @Produce json
+// @Success 501 {object} map[string]string
+// @Router /users/request-password-reset [post]
+func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"message": "RequestPasswordReset not implemented"})
+}
+
+// ResetPassword godoc
+// @Summary Reset password
+// @Description Reset user password using a token
+// @Tags auth
+// @Produce json
+// @Success 501 {object} map[string]string
+// @Router /users/reset-password [post]
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"message": "ResetPassword not implemented"})
+}
+
+// RefreshToken godoc
+// @Summary Refresh JWT token
+// @Description Refresh JWT using a valid refresh token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param data body requests.RefreshTokenRequest true "Refresh token"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Router /users/refresh-token [post]
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
+	var req requests.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+	accessToken, refreshToken, err := h.AuthService.RefreshTokens(req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"expires_in":    time.Now().Add(15 * time.Minute).Unix(),
 	})
 }

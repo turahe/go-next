@@ -17,7 +17,7 @@ type CategoryService interface {
 	GetAllCategories(ctx context.Context) ([]models.Category, error)
 	GetCategoryByID(ctx context.Context, id uint64) (*models.Category, error)
 	GetCategoryBySlug(ctx context.Context, slug string) (*models.Category, error)
-	GetCategoriesWithPagination(ctx context.Context, page, perPage int) (*responses.PaginationResponse, error)
+	GetCategoriesWithPagination(ctx context.Context, page, perPage int, search string) (*responses.PaginationResponse, error)
 	GetRootCategories(ctx context.Context) ([]models.Category, error)
 	GetActiveCategories(ctx context.Context) ([]models.Category, error)
 	CreateCategory(ctx context.Context, category *models.Category) error
@@ -102,7 +102,7 @@ func (s *categoryService) GetCategoryBySlug(ctx context.Context, slug string) (*
 	return &category, nil
 }
 
-func (s *categoryService) GetCategoriesWithPagination(ctx context.Context, page, perPage int) (*responses.PaginationResponse, error) {
+func (s *categoryService) GetCategoriesWithPagination(ctx context.Context, page, perPage int, search string) (*responses.PaginationResponse, error) {
 	var categories []models.Category
 	cacheKey := s.GetListCacheKey(redis.CategoryCachePrefix)
 
@@ -111,7 +111,13 @@ func (s *categoryService) GetCategoriesWithPagination(ctx context.Context, page,
 		PerPage: perPage,
 	}
 
-	result, err := s.PaginateWithCache(ctx, &models.Category{}, params, &categories, cacheKey, redis.DefaultTTL)
+	query := database.DB
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Where("name LIKE ? OR description LIKE ?", like, like)
+	}
+
+	result, err := s.PaginateWithCacheQuery(ctx, &models.Category{}, params, &categories, cacheKey, redis.DefaultTTL, query)
 	if err != nil {
 		return nil, err
 	}
