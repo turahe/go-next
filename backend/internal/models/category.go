@@ -71,7 +71,7 @@ func (c *Category) validate() error {
 	}
 
 	// Prevent circular references
-	if c.ParentID != nil && *c.ParentID == int64(c.ID) {
+	if c.ParentID != nil && *c.ParentID == c.ID {
 		return errors.New("category cannot be its own parent")
 	}
 
@@ -99,7 +99,7 @@ func (c *Category) IsLeaf() bool {
 }
 
 // GetDepth returns the depth of this category in the hierarchy
-func (c *Category) GetDepth() int64 {
+func (c *Category) GetDepth() uint64 {
 	if c.RecordDept != nil {
 		return *c.RecordDept
 	}

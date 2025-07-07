@@ -1,8 +1,8 @@
 # Config file for Air (https://github.com/cosmtrek/air)
 
 [build]
-  cmd = "go build -o ./tmp/main"
-  bin = "./tmp/main"
+  cmd = "go build -o tmp/main.exe"
+  bin = "tmp/main.exe"
   full_bin = ""
   include_ext = [".go"]
   exclude_dir = ["docs", "tests", "tmp"]

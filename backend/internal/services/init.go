@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"wordpress-go-next/backend/pkg/database"
+	"wordpress-go-next/backend/pkg/logger"
 	"wordpress-go-next/backend/pkg/redis"
 	"wordpress-go-next/backend/pkg/storage"
 )
@@ -14,7 +15,7 @@ import (
 type ServiceManager struct {
 	RedisService    *redis.RedisService
 	StorageService  storage.StorageService
-	Logger          *ServiceLogger
+	Logger          *logger.ServiceLogger
 	UserService     UserService
 	PostService     PostService
 	CategoryService CategoryService
@@ -27,9 +28,9 @@ type ServiceManager struct {
 }
 
 // NewServiceManager creates a new service manager with all services initialized
-func NewServiceManager(redisService *redis.RedisService, storageService storage.StorageService, logLevel LogLevel) *ServiceManager {
+func NewServiceManager(redisService *redis.RedisService, storageService storage.StorageService, logLevel logger.LogLevel) *ServiceManager {
 	// Initialize logger
-	logger := NewServiceLogger(logLevel, "ServiceManager")
+	logger := logger.NewServiceLogger(logLevel, "ServiceManager")
 
 	manager := &ServiceManager{
 		RedisService:   redisService,
@@ -49,17 +50,13 @@ func NewServiceManager(redisService *redis.RedisService, storageService storage.
 	manager.TagService = NewTagService(redisService)
 
 	// Log service initialization
-	logger.Info(context.Background(), "NewServiceManager", "All services initialized successfully", map[string]interface{}{
-		"services_count":    9,
-		"redis_available":   redisService != nil,
-		"storage_available": storageService != nil,
-	})
+	logger.Info("NewServiceManager: All services initialized successfully", "services_count", 9, "redis_available", redisService != nil, "storage_available", storageService != nil)
 
 	return manager
 }
 
 // InitializeServices initializes all global service instances
-func InitializeServices(redisService *redis.RedisService, storageService storage.StorageService, logLevel LogLevel) {
+func InitializeServices(redisService *redis.RedisService, storageService storage.StorageService, logLevel logger.LogLevel) {
 	manager := NewServiceManager(redisService, storageService, logLevel)
 
 	// Set global service instances
@@ -76,7 +73,7 @@ func InitializeServices(redisService *redis.RedisService, storageService storage
 	ServiceMgr = manager
 
 	// Initialize global logger
-	InitializeLogger(logLevel, "GlobalServices")
+	logger.InitializeLogger(logLevel, "GlobalServices")
 
 	// Warm up caches
 	go func() {

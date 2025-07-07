@@ -153,3 +153,21 @@ func (u *User) IsEmailVerified() bool {
 func (u *User) IsPhoneVerified() bool {
 	return u.PhoneVerified != nil
 }
+
+// JWTKey represents a user's JWT secret and expiration
+// Used for per-user JWT signing
+// Table: jwt_keys
+// Example fields: ID, UserID, SecretKey, TokenExpiration
+
+type JWTKey struct {
+	ID              uint64    `gorm:"primaryKey" json:"id"`
+	UserID          uint64    `gorm:"uniqueIndex;not null" json:"user_id"`
+	SecretKey       string    `gorm:"not null;size:255" json:"secret_key"`
+	TokenExpiration int64     `gorm:"not null" json:"token_expiration"` // in seconds
+	CreatedAt       time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (JWTKey) TableName() string {
+	return "jwt_keys"
+}

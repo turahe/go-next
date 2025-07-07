@@ -14,7 +14,84 @@ A modular, production-ready Golang backend for a WordPress-like web application.
 - Service interfaces for business logic
 - Test scaffolding for endpoints
 
-## Getting Started
+## Prerequisites
+- Docker & Docker Compose
+- PowerShell (for Windows automation scripts)
+- Go 1.24+ (for local development outside Docker)
+
+## Environment Setup
+
+This project uses environment-specific `.env` files for configuration:
+- `backend/.env.development`
+- `backend/.env.staging`
+- `backend/.env.production`
+
+You can generate these files automatically using the provided PowerShell script:
+
+```powershell
+# In the backend directory
+./setup-env.ps1
+```
+
+This will create all three `.env` files with example values if they do not already exist.
+
+## Switching Environments
+
+To switch between development, staging, and production environments, use the `switch-env.ps1` script:
+
+```powershell
+# Usage:
+./switch-env.ps1 -envType development   # or staging, production
+```
+
+This sets the appropriate `ENV` and `BUILD_TARGET` environment variables for Docker Compose.
+
+## Running the Backend with Docker Compose
+
+### Development (default)
+```powershell
+# Ensure ENV and BUILD_TARGET are set (default is development)
+docker compose up --build
+```
+
+### Staging
+```powershell
+./switch-env.ps1 -envType staging
+docker compose up --build
+```
+
+### Production
+```powershell
+./switch-env.ps1 -envType production
+docker compose up --build
+```
+
+## Manual Environment Switching
+If you prefer, you can set the environment variables manually:
+```powershell
+$env:ENV="production"
+$env:BUILD_TARGET="prod"
+docker compose up --build
+```
+
+## Healthchecks & Logging
+- The backend service includes a healthcheck on `/health`.
+- Logging is configured with rotation (max 10MB per file, 3 files).
+
+## Volumes
+- In development, the source code is mounted for hot reload.
+- In staging/production, remove or set the volume to read-only for security.
+
+## Troubleshooting
+- Ensure the correct `.env` file exists for your environment.
+- If you change environment variables, rebuild the containers: `docker compose up --build`
+- For port conflicts, adjust the `ports` section in `docker-compose.yml`.
+
+## Scripts
+- `setup-env.ps1`: Generates all required `.env` files with example values.
+- `switch-env.ps1`: Sets environment variables for Docker Compose based on the target environment.
+
+### Getting Started
 
 ### Prerequisites
 - Go 1.20+

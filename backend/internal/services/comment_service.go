@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 	"wordpress-go-next/backend/internal/models"
@@ -15,24 +16,26 @@ import (
 type CommentService interface {
 	GetCommentsByPost(ctx context.Context, postID string) ([]models.Comment, error)
 	GetCommentByID(ctx context.Context, id string) (*models.Comment, error)
-	CreateComment(ctx context.Context, comment *models.Comment) error
-	UpdateComment(ctx context.Context, comment *models.Comment) error
+	CreateComment(ctx context.Context, comment *models.Comment, content string) error
+	UpdateComment(ctx context.Context, comment *models.Comment, content string) error
 	DeleteComment(ctx context.Context, id string) error
-	CreateNested(ctx context.Context, comment *models.Comment, parentID *int64) error
-	MoveNested(ctx context.Context, id uint, newParentID *int64) error
-	DeleteNested(ctx context.Context, id uint) error
-	GetSiblingComments(ctx context.Context, id uint) ([]models.Comment, error)
-	GetParentComment(ctx context.Context, id uint) (*models.Comment, error)
-	GetDescendantComments(ctx context.Context, id uint) ([]models.Comment, error)
-	GetChildrenComments(ctx context.Context, id uint) ([]models.Comment, error)
-	GetCommentsByUser(ctx context.Context, userID uint, limit, offset int) ([]models.Comment, int64, error)
-	GetAllComments(ctx context.Context, limit, offset int) ([]models.Comment, int64, error)
-	InvalidateCommentCache(ctx context.Context, commentID uint) error
+	CreateNested(ctx context.Context, comment *models.Comment, parentID *uint64) error
+	MoveNested(ctx context.Context, id uint64, newParentID *uint64) error
+	DeleteNested(ctx context.Context, id uint64) error
+	GetSiblingComments(ctx context.Context, id uint64) ([]models.Comment, error)
+	GetParentComment(ctx context.Context, id uint64) (*models.Comment, error)
+	GetDescendantComments(ctx context.Context, id uint64) ([]models.Comment, error)
+	GetChildrenComments(ctx context.Context, id uint64) ([]models.Comment, error)
+	GetCommentsByUser(ctx context.Context, userID uint64, limit, offset int) ([]models.Comment, uint64, error)
+	GetAllComments(ctx context.Context, limit, offset int) ([]models.Comment, uint64, error)
+	InvalidateCommentCache(ctx context.Context, commentID uint64) error
 }
 
 type commentService struct {
 	Redis *redis.RedisService
 }
+
+var CommentSvc CommentService = &commentService{}
 
 func NewCommentService(redisService *redis.RedisService) CommentService {
 	return &commentService{
@@ -52,7 +55,7 @@ const (
 	commentAllKeyPrefix         = "comment:all:"
 )
 
-func (s *commentService) getCommentCacheKey(id uint) string {
+func (s *commentService) getCommentCacheKey(id uint64) string {
 	return fmt.Sprintf("%s%d", commentCacheKeyPrefix, id)
 }
 
@@ -60,23 +63,23 @@ func (s *commentService) getCommentPostCacheKey(postID string) string {
 	return fmt.Sprintf("%s%s", commentPostKeyPrefix, postID)
 }
 
-func (s *commentService) getCommentSiblingsCacheKey(id uint) string {
+func (s *commentService) getCommentSiblingsCacheKey(id uint64) string {
 	return fmt.Sprintf("%s%d", commentSiblingsKeyPrefix, id)
 }
 
-func (s *commentService) getCommentParentCacheKey(id uint) string {
+func (s *commentService) getCommentParentCacheKey(id uint64) string {
 	return fmt.Sprintf("%s%d", commentParentKeyPrefix, id)
 }
 
-func (s *commentService) getCommentChildrenCacheKey(id uint) string {
+func (s *commentService) getCommentChildrenCacheKey(id uint64) string {
 	return fmt.Sprintf("%s%d", commentChildrenKeyPrefix, id)
 }
 
-func (s *commentService) getCommentDescendantsCacheKey(id uint) string {
+func (s *commentService) getCommentDescendantsCacheKey(id uint64) string {
 	return fmt.Sprintf("%s%d", commentDescendantsKeyPrefix, id)
 }
 
-func (s *commentService) getCommentUserCacheKey(userID uint, limit, offset int) string {
+func (s *commentService) getCommentUserCacheKey(userID uint64, limit, offset int) string {
 	return fmt.Sprintf("%s%d:%d:%d", commentUserKeyPrefix, userID, limit, offset)
 }
 
@@ -103,14 +106,17 @@ func (s *commentService) GetCommentsByPost(ctx context.Context, postID string) (
 
 	// Cache the result
 	if data, err := json.Marshal(comments); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return comments, err
 }
 
 func (s *commentService) GetCommentByID(ctx context.Context, id string) (*models.Comment, error) {
-	cacheKey := s.getCommentCacheKey(uint(0)) // We'll need to parse the ID properly
+	cacheKey := s.getCommentCacheKey(0) // We'll need to parse the ID properly
 
 	// Try to get from cache first
 	if cached, err := s.Redis.Get(ctx, cacheKey); err == nil {
@@ -134,36 +140,59 @@ func (s *commentService) GetCommentByID(ctx context.Context, id string) (*models
 	return &comment, err
 }
 
-func (s *commentService) CreateComment(ctx context.Context, comment *models.Comment) error {
-	if err := database.DB.WithContext(ctx).Create(comment).Error; err != nil {
-		return fmt.Errorf("failed to create comment: %w", err)
-	}
-
-	// Cache the new comment
-	if err := s.cacheComment(ctx, comment); err != nil {
-		fmt.Printf("Warning: failed to cache comment %d: %v\n", comment.ID, err)
-	}
-
-	// Invalidate related caches
-	s.invalidateRelatedCaches(ctx, comment)
-
-	return nil
+func (s *commentService) CreateComment(ctx context.Context, comment *models.Comment, content string) error {
+	return database.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(comment).Error; err != nil {
+			return fmt.Errorf("failed to create comment: %w", err)
+		}
+		// Create Content
+		c := &models.Content{
+			ModelID:   comment.ID,
+			ModelType: "comment",
+			Content:   content,
+		}
+		if err := tx.Create(c).Error; err != nil {
+			return fmt.Errorf("failed to create comment content: %w", err)
+		}
+		comment.Content = c
+		if err := s.cacheComment(ctx, comment); err != nil {
+			fmt.Printf("Warning: failed to cache comment %d: %v\n", comment.ID, err)
+		}
+		s.invalidateRelatedCaches(ctx, comment)
+		return nil
+	})
 }
 
-func (s *commentService) UpdateComment(ctx context.Context, comment *models.Comment) error {
-	if err := database.DB.WithContext(ctx).Save(comment).Error; err != nil {
-		return fmt.Errorf("failed to update comment: %w", err)
-	}
-
-	// Update cache
-	if err := s.cacheComment(ctx, comment); err != nil {
-		fmt.Printf("Warning: failed to cache comment %d: %v\n", comment.ID, err)
-	}
-
-	// Invalidate related caches
-	s.invalidateRelatedCaches(ctx, comment)
-
-	return nil
+func (s *commentService) UpdateComment(ctx context.Context, comment *models.Comment, content string) error {
+	return database.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(comment).Error; err != nil {
+			return fmt.Errorf("failed to update comment: %w", err)
+		}
+		// Update Content
+		var c models.Content
+		err := tx.Where("model_id = ? AND model_type = ?", comment.ID, "comment").First(&c).Error
+		if err == nil {
+			c.Content = content
+			if err := tx.Save(&c).Error; err != nil {
+				return fmt.Errorf("failed to update comment content: %w", err)
+			}
+			comment.Content = &c
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Create if not found
+			c = models.Content{ModelID: comment.ID, ModelType: "comment", Content: content}
+			if err := tx.Create(&c).Error; err != nil {
+				return fmt.Errorf("failed to create comment content: %w", err)
+			}
+			comment.Content = &c
+		} else {
+			return fmt.Errorf("failed to find comment content: %w", err)
+		}
+		if err := s.cacheComment(ctx, comment); err != nil {
+			fmt.Printf("Warning: failed to cache comment %d: %v\n", comment.ID, err)
+		}
+		s.invalidateRelatedCaches(ctx, comment)
+		return nil
+	})
 }
 
 func (s *commentService) DeleteComment(ctx context.Context, id string) error {
@@ -184,10 +213,10 @@ func (s *commentService) DeleteComment(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *commentService) CreateNested(ctx context.Context, comment *models.Comment, parentID *int64) error {
+func (s *commentService) CreateNested(ctx context.Context, comment *models.Comment, parentID *uint64) error {
 	return database.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var left int64
-		var depth int64 = 0
+		var left uint64
+		var depth uint64 = 0
 		if parentID != nil {
 			var parent models.Comment
 			if err := tx.First(&parent, *parentID).Error; err != nil {
@@ -224,14 +253,14 @@ func (s *commentService) CreateNested(ctx context.Context, comment *models.Comme
 
 		// Invalidate parent and sibling caches
 		if parentID != nil {
-			s.invalidateParentCaches(ctx, uint(*parentID))
+			s.invalidateParentCaches(ctx, *parentID)
 		}
 
 		return nil
 	})
 }
 
-func (s *commentService) MoveNested(ctx context.Context, id uint, newParentID *int64) error {
+func (s *commentService) MoveNested(ctx context.Context, id uint64, newParentID *uint64) error {
 	// Implementation for moving nested comments
 	// This is a complex operation that requires careful handling of the nested set model
 	// For now, we'll invalidate all related caches
@@ -239,7 +268,7 @@ func (s *commentService) MoveNested(ctx context.Context, id uint, newParentID *i
 	return nil
 }
 
-func (s *commentService) DeleteNested(ctx context.Context, id uint) error {
+func (s *commentService) DeleteNested(ctx context.Context, id uint64) error {
 	return database.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var node models.Comment
 		if err := tx.First(&node, id).Error; err != nil {
@@ -268,14 +297,14 @@ func (s *commentService) DeleteNested(ctx context.Context, id uint) error {
 
 		// Invalidate parent caches if exists
 		if node.ParentID != nil {
-			s.invalidateParentCaches(ctx, uint(*node.ParentID))
+			s.invalidateParentCaches(ctx, *node.ParentID)
 		}
 
 		return nil
 	})
 }
 
-func (s *commentService) GetSiblingComments(ctx context.Context, id uint) ([]models.Comment, error) {
+func (s *commentService) GetSiblingComments(ctx context.Context, id uint64) ([]models.Comment, error) {
 	cacheKey := s.getCommentSiblingsCacheKey(id)
 
 	// Try to get from cache first
@@ -299,13 +328,16 @@ func (s *commentService) GetSiblingComments(ctx context.Context, id uint) ([]mod
 
 	// Cache the result
 	if data, err := json.Marshal(siblings); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return siblings, nil
 }
 
-func (s *commentService) GetParentComment(ctx context.Context, id uint) (*models.Comment, error) {
+func (s *commentService) GetParentComment(ctx context.Context, id uint64) (*models.Comment, error) {
 	cacheKey := s.getCommentParentCacheKey(id)
 
 	// Try to get from cache first
@@ -330,13 +362,16 @@ func (s *commentService) GetParentComment(ctx context.Context, id uint) (*models
 
 	// Cache the result
 	if data, err := json.Marshal(parent); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &parent, nil
 }
 
-func (s *commentService) GetDescendantComments(ctx context.Context, id uint) ([]models.Comment, error) {
+func (s *commentService) GetDescendantComments(ctx context.Context, id uint64) ([]models.Comment, error) {
 	cacheKey := s.getCommentDescendantsCacheKey(id)
 
 	// Try to get from cache first
@@ -359,13 +394,16 @@ func (s *commentService) GetDescendantComments(ctx context.Context, id uint) ([]
 
 	// Cache the result
 	if data, err := json.Marshal(descendants); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return descendants, nil
 }
 
-func (s *commentService) GetChildrenComments(ctx context.Context, id uint) ([]models.Comment, error) {
+func (s *commentService) GetChildrenComments(ctx context.Context, id uint64) ([]models.Comment, error) {
 	cacheKey := s.getCommentChildrenCacheKey(id)
 
 	// Try to get from cache first
@@ -383,13 +421,16 @@ func (s *commentService) GetChildrenComments(ctx context.Context, id uint) ([]mo
 
 	// Cache the result
 	if data, err := json.Marshal(children); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return children, nil
 }
 
-func (s *commentService) GetCommentsByUser(ctx context.Context, userID uint, limit, offset int) ([]models.Comment, int64, error) {
+func (s *commentService) GetCommentsByUser(ctx context.Context, userID uint64, limit, offset int) ([]models.Comment, uint64, error) {
 	cacheKey := s.getCommentUserCacheKey(userID, limit, offset)
 
 	// Try to get from cache first
@@ -399,7 +440,7 @@ func (s *commentService) GetCommentsByUser(ctx context.Context, userID uint, lim
 			Total    int64            `json:"total"`
 		}
 		if err := json.Unmarshal([]byte(cached), &result); err == nil {
-			return result.Comments, result.Total, nil
+			return result.Comments, uint64(result.Total), nil
 		}
 	}
 
@@ -426,13 +467,16 @@ func (s *commentService) GetCommentsByUser(ctx context.Context, userID uint, lim
 	}
 
 	if data, err := json.Marshal(result); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 15*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 15*time.Minute)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 
-	return comments, total, nil
+	return comments, uint64(total), nil
 }
 
-func (s *commentService) GetAllComments(ctx context.Context, limit, offset int) ([]models.Comment, int64, error) {
+func (s *commentService) GetAllComments(ctx context.Context, limit, offset int) ([]models.Comment, uint64, error) {
 	cacheKey := s.getCommentAllCacheKey(limit, offset)
 
 	// Try to get from cache first
@@ -442,7 +486,7 @@ func (s *commentService) GetAllComments(ctx context.Context, limit, offset int) 
 			Total    int64            `json:"total"`
 		}
 		if err := json.Unmarshal([]byte(cached), &result); err == nil {
-			return result.Comments, result.Total, nil
+			return result.Comments, uint64(result.Total), nil
 		}
 	}
 
@@ -469,13 +513,16 @@ func (s *commentService) GetAllComments(ctx context.Context, limit, offset int) 
 	}
 
 	if data, err := json.Marshal(result); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 15*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 15*time.Minute)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 
-	return comments, total, nil
+	return comments, uint64(total), nil
 }
 
-func (s *commentService) InvalidateCommentCache(ctx context.Context, commentID uint) error {
+func (s *commentService) InvalidateCommentCache(ctx context.Context, commentID uint64) error {
 	s.invalidateCommentCaches(ctx, commentID)
 	return nil
 }
@@ -491,7 +538,7 @@ func (s *commentService) cacheComment(ctx context.Context, comment *models.Comme
 	return s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
 }
 
-func (s *commentService) invalidateCommentCaches(ctx context.Context, commentID uint) {
+func (s *commentService) invalidateCommentCaches(ctx context.Context, commentID uint64) {
 	cacheKeys := []string{
 		s.getCommentCacheKey(commentID),
 		s.getCommentSiblingsCacheKey(commentID),
@@ -501,11 +548,14 @@ func (s *commentService) invalidateCommentCaches(ctx context.Context, commentID 
 	}
 
 	for _, key := range cacheKeys {
-		s.Redis.Delete(ctx, key)
+		err := s.Redis.Delete(ctx, key)
+		if err != nil {
+			return
+		}
 	}
 }
 
-func (s *commentService) invalidateParentCaches(ctx context.Context, parentID uint) {
+func (s *commentService) invalidateParentCaches(ctx context.Context, parentID uint64) {
 	cacheKeys := []string{
 		s.getCommentCacheKey(parentID),
 		s.getCommentChildrenCacheKey(parentID),
@@ -513,14 +563,20 @@ func (s *commentService) invalidateParentCaches(ctx context.Context, parentID ui
 	}
 
 	for _, key := range cacheKeys {
-		s.Redis.Delete(ctx, key)
+		err := s.Redis.Delete(ctx, key)
+		if err != nil {
+			return
+		}
 	}
 }
 
 func (s *commentService) invalidateRelatedCaches(ctx context.Context, comment *models.Comment) {
 	// Invalidate post comments cache
 	if comment.PostID != 0 {
-		s.Redis.Delete(ctx, s.getCommentPostCacheKey(fmt.Sprintf("%d", comment.PostID)))
+		err := s.Redis.Delete(ctx, s.getCommentPostCacheKey(fmt.Sprintf("%d", comment.PostID)))
+		if err != nil {
+			return
+		}
 	}
 
 	// Invalidate pagination caches
@@ -530,7 +586,10 @@ func (s *commentService) invalidateRelatedCaches(ctx context.Context, comment *m
 	}
 
 	for _, pattern := range patterns {
-		s.Redis.DeletePattern(ctx, pattern)
+		err := s.Redis.DeletePattern(ctx, pattern)
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -547,8 +606,9 @@ func (s *commentService) invalidateAllCommentCaches(ctx context.Context) {
 	}
 
 	for _, pattern := range patterns {
-		s.Redis.DeletePattern(ctx, pattern)
+		err := s.Redis.DeletePattern(ctx, pattern)
+		if err != nil {
+			return
+		}
 	}
 }
-
-var CommentSvc CommentService = &commentService{}

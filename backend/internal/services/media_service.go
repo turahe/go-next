@@ -16,15 +16,23 @@ import (
 
 type MediaService interface {
 	UploadAndSaveMedia(ctx context.Context, file multipart.File, fileHeader *multipart.FileHeader, createdBy *int64) (*models.Media, error)
-	AssociateMedia(ctx context.Context, mediaID, mediableID uint, mediableType, group string) error
-	GetMediaByID(ctx context.Context, id uint) (*models.Media, error)
+	AssociateMedia(ctx context.Context, mediaID, mediableID uint64, mediableType, group string) error
+	GetMediaByID(ctx context.Context, id uint64) (*models.Media, error)
 	GetMediaByUUID(ctx context.Context, uuid string) (*models.Media, error)
-	GetMediaByMediable(ctx context.Context, mediableID uint, mediableType string) ([]models.Media, error)
+	GetMediaByMediable(ctx context.Context, mediableID uint64, mediableType string) ([]models.Media, error)
 	UpdateMedia(ctx context.Context, media *models.Media) error
-	DeleteMedia(ctx context.Context, id uint) error
+	DeleteMedia(ctx context.Context, id uint64) error
 	GetAllMedia(ctx context.Context, limit, offset int) ([]models.Media, int64, error)
-	GetMediaByUser(ctx context.Context, userID uint, limit, offset int) ([]models.Media, int64, error)
-	InvalidateMediaCache(ctx context.Context, mediaID uint) error
+	GetMediaByUser(ctx context.Context, userID uint64, limit, offset int) ([]models.Media, int64, error)
+	InvalidateMediaCache(ctx context.Context, mediaID uint64) error
+	// Nested/tree methods
+	CreateNested(ctx context.Context, media *models.Media, parentID *uint64) error
+	MoveNested(ctx context.Context, id uint64, newParentID *uint64) error
+	DeleteNested(ctx context.Context, id uint64) error
+	GetSiblingMedia(ctx context.Context, id uint64) ([]models.Media, error)
+	GetParentMedia(ctx context.Context, id uint64) (*models.Media, error)
+	GetDescendantMedia(ctx context.Context, id uint64) ([]models.Media, error)
+	GetChildrenMedia(ctx context.Context, id uint64) ([]models.Media, error)
 }
 
 type mediaService struct {
@@ -48,7 +56,7 @@ const (
 	mediaAllKeyPrefix       = "media:all:"
 )
 
-func (s *mediaService) getMediaCacheKey(id uint) string {
+func (s *mediaService) getMediaCacheKey(id uint64) string {
 	return fmt.Sprintf("%s%d", mediaCacheKeyPrefix, id)
 }
 
@@ -56,11 +64,11 @@ func (s *mediaService) getMediaUUIDCacheKey(uuid string) string {
 	return fmt.Sprintf("%s%s", mediaUUIDCacheKeyPrefix, uuid)
 }
 
-func (s *mediaService) getMediaMediableCacheKey(mediableID uint, mediableType string) string {
+func (s *mediaService) getMediaMediableCacheKey(mediableID uint64, mediableType string) string {
 	return fmt.Sprintf("%s%d:%s", mediaMediableKeyPrefix, mediableID, mediableType)
 }
 
-func (s *mediaService) getMediaUserCacheKey(userID uint, limit, offset int) string {
+func (s *mediaService) getMediaUserCacheKey(userID uint64, limit, offset int) string {
 	return fmt.Sprintf("%s%d:%d:%d", mediaUserKeyPrefix, userID, limit, offset)
 }
 
@@ -84,7 +92,7 @@ func (s *mediaService) UploadAndSaveMedia(ctx context.Context, file multipart.Fi
 		Size:     fileHeader.Size,
 	}
 	if createdBy != nil {
-		userID := uint(*createdBy)
+		userID := uint64(*createdBy)
 		media.CreatedBy = &userID
 	}
 
@@ -103,10 +111,10 @@ func (s *mediaService) UploadAndSaveMedia(ctx context.Context, file multipart.Fi
 	return media, nil
 }
 
-func (s *mediaService) AssociateMedia(ctx context.Context, mediaID, mediableID uint, mediableType, group string) error {
+func (s *mediaService) AssociateMedia(ctx context.Context, mediaID, mediableID uint64, mediableType, group string) error {
 	mediable := models.Mediable{
-		MediaID:      mediaID,
-		MediableID:   mediableID,
+		MediaID:      uint(mediaID),
+		MediableID:   uint(mediableID),
 		MediableType: mediableType,
 		Group:        group,
 	}
@@ -130,7 +138,7 @@ func (s *mediaService) AssociateMedia(ctx context.Context, mediaID, mediableID u
 	return nil
 }
 
-func (s *mediaService) GetMediaByID(ctx context.Context, id uint) (*models.Media, error) {
+func (s *mediaService) GetMediaByID(ctx context.Context, id uint64) (*models.Media, error) {
 	cacheKey := s.getMediaCacheKey(id)
 
 	// Try to get from cache first
@@ -178,7 +186,7 @@ func (s *mediaService) GetMediaByUUID(ctx context.Context, uuid string) (*models
 	return &media, nil
 }
 
-func (s *mediaService) GetMediaByMediable(ctx context.Context, mediableID uint, mediableType string) ([]models.Media, error) {
+func (s *mediaService) GetMediaByMediable(ctx context.Context, mediableID uint64, mediableType string) ([]models.Media, error) {
 	cacheKey := s.getMediaMediableCacheKey(mediableID, mediableType)
 
 	// Try to get from cache first
@@ -201,7 +209,10 @@ func (s *mediaService) GetMediaByMediable(ctx context.Context, mediableID uint, 
 
 	// Cache the result
 	if data, err := json.Marshal(media); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return media, nil
@@ -223,7 +234,7 @@ func (s *mediaService) UpdateMedia(ctx context.Context, media *models.Media) err
 	return nil
 }
 
-func (s *mediaService) DeleteMedia(ctx context.Context, id uint) error {
+func (s *mediaService) DeleteMedia(ctx context.Context, id uint64) error {
 	// Get media first to invalidate related caches
 	var media models.Media
 	if err := database.DB.WithContext(ctx).First(&media, id).Error; err != nil {
@@ -278,13 +289,16 @@ func (s *mediaService) GetAllMedia(ctx context.Context, limit, offset int) ([]mo
 	}
 
 	if data, err := json.Marshal(result); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 15*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 15*time.Minute)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 
 	return media, total, nil
 }
 
-func (s *mediaService) GetMediaByUser(ctx context.Context, userID uint, limit, offset int) ([]models.Media, int64, error) {
+func (s *mediaService) GetMediaByUser(ctx context.Context, userID uint64, limit, offset int) ([]models.Media, int64, error) {
 	cacheKey := s.getMediaUserCacheKey(userID, limit, offset)
 
 	// Try to get from cache first
@@ -321,13 +335,16 @@ func (s *mediaService) GetMediaByUser(ctx context.Context, userID uint, limit, o
 	}
 
 	if data, err := json.Marshal(result); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 15*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 15*time.Minute)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 
 	return media, total, nil
 }
 
-func (s *mediaService) InvalidateMediaCache(ctx context.Context, mediaID uint) error {
+func (s *mediaService) InvalidateMediaCache(ctx context.Context, mediaID uint64) error {
 	s.invalidateMediaCaches(ctx, mediaID)
 	return nil
 }
@@ -350,13 +367,16 @@ func (s *mediaService) cacheMedia(ctx context.Context, media *models.Media) erro
 	return s.Redis.SetWithTTL(ctx, uuidCacheKey, string(data), 30*time.Minute)
 }
 
-func (s *mediaService) invalidateMediaCaches(ctx context.Context, mediaID uint) {
+func (s *mediaService) invalidateMediaCaches(ctx context.Context, mediaID uint64) {
 	cacheKeys := []string{
 		s.getMediaCacheKey(mediaID),
 	}
 
 	for _, key := range cacheKeys {
-		s.Redis.Delete(ctx, key)
+		err := s.Redis.Delete(ctx, key)
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -368,6 +388,39 @@ func (s *mediaService) invalidateRelatedCaches(ctx context.Context) {
 	}
 
 	for _, pattern := range patterns {
-		s.Redis.DeletePattern(ctx, pattern)
+		err := s.Redis.DeletePattern(ctx, pattern)
+		if err != nil {
+			return
+		}
 	}
+}
+
+// --- Nested/tree stub implementations ---
+func (s *mediaService) CreateNested(ctx context.Context, media *models.Media, parentID *uint64) error {
+	// TODO: Implement nested media creation
+	return nil
+}
+func (s *mediaService) MoveNested(ctx context.Context, id uint64, newParentID *uint64) error {
+	// TODO: Implement nested media move
+	return nil
+}
+func (s *mediaService) DeleteNested(ctx context.Context, id uint64) error {
+	// TODO: Implement nested media deletion
+	return nil
+}
+func (s *mediaService) GetSiblingMedia(ctx context.Context, id uint64) ([]models.Media, error) {
+	// TODO: Implement get sibling media
+	return []models.Media{}, nil
+}
+func (s *mediaService) GetParentMedia(ctx context.Context, id uint64) (*models.Media, error) {
+	// TODO: Implement get parent media
+	return nil, nil
+}
+func (s *mediaService) GetDescendantMedia(ctx context.Context, id uint64) ([]models.Media, error) {
+	// TODO: Implement get descendant media
+	return []models.Media{}, nil
+}
+func (s *mediaService) GetChildrenMedia(ctx context.Context, id uint64) ([]models.Media, error) {
+	// TODO: Implement get children media
+	return []models.Media{}, nil
 }

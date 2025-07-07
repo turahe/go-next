@@ -44,22 +44,22 @@ type TagListRequest struct {
 
 // AddTagToEntityRequest represents the request for adding a tag to an entity
 type AddTagToEntityRequest struct {
-	TagID      uint   `json:"tag_id" binding:"required"`
-	EntityID   uint   `json:"entity_id" binding:"required"`
+	TagID      uint64 `json:"tag_id" binding:"required"`
+	EntityID   uint64 `json:"entity_id" binding:"required"`
 	EntityType string `json:"entity_type" binding:"required,oneof=post user media category comment"`
 	Group      string `json:"group" binding:"max=50"`
 }
 
 // RemoveTagFromEntityRequest represents the request for removing a tag from an entity
 type RemoveTagFromEntityRequest struct {
-	TagID      uint   `json:"tag_id" binding:"required"`
-	EntityID   uint   `json:"entity_id" binding:"required"`
+	TagID      uint64 `json:"tag_id" binding:"required"`
+	EntityID   uint64 `json:"entity_id" binding:"required"`
 	EntityType string `json:"entity_type" binding:"required,oneof=post user media category comment"`
 }
 
 // GetEntitiesByTagRequest represents the request for getting entities by tag
 type GetEntitiesByTagRequest struct {
-	TagID      uint   `form:"tag_id" binding:"required"`
+	TagID      uint64 `form:"tag_id" binding:"required"`
 	EntityType string `form:"entity_type" binding:"required,oneof=post user media category comment"`
 	Limit      int    `form:"limit" binding:"min=1,max=100"`
 	Offset     int    `form:"offset" binding:"min=0"`
@@ -67,22 +67,22 @@ type GetEntitiesByTagRequest struct {
 
 // BulkTagRequest represents the request for bulk tagging operations
 type BulkTagRequest struct {
-	TagIDs     []uint `json:"tag_ids" binding:"required,min=1"`
-	EntityID   uint   `json:"entity_id" binding:"required"`
-	EntityType string `json:"entity_type" binding:"required,oneof=post user media category comment"`
-	Group      string `json:"group" binding:"max=50"`
+	TagIDs     []uint64 `json:"tag_ids" binding:"required,min=1"`
+	EntityID   uint64   `json:"entity_id" binding:"required"`
+	EntityType string   `json:"entity_type" binding:"required,oneof=post user media category comment"`
+	Group      string   `json:"group" binding:"max=50"`
 }
 
 // BulkUntagRequest represents the request for bulk untagging operations
 type BulkUntagRequest struct {
-	TagIDs     []uint `json:"tag_ids" binding:"required,min=1"`
-	EntityID   uint   `json:"entity_id" binding:"required"`
-	EntityType string `json:"entity_type" binding:"required,oneof=post user media category comment"`
+	TagIDs     []uint64 `json:"tag_ids" binding:"required,min=1"`
+	EntityID   uint64   `json:"entity_id" binding:"required"`
+	EntityType string   `json:"entity_type" binding:"required,oneof=post user media category comment"`
 }
 
 // TagStatisticsRequest represents the request for tag statistics
 type TagStatisticsRequest struct {
-	TagID      uint   `form:"tag_id" binding:"required"`
+	TagID      uint64 `form:"tag_id" binding:"required"`
 	EntityType string `form:"entity_type" binding:"omitempty,oneof=post user media category comment"`
 }
 

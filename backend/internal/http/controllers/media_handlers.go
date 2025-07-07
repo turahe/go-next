@@ -55,7 +55,7 @@ func (h *mediaHandler) UploadMedia(c *gin.Context) {
 		id := int64(userID.(uint))
 		createdBy = &id
 	}
-	media, err := h.MediaService.UploadAndSaveMedia(file, fileHeader, createdBy)
+	media, err := h.MediaService.UploadAndSaveMedia(c.Request.Context(), file, fileHeader, createdBy)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -82,7 +82,7 @@ func (h *mediaHandler) AssociateMedia(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	if err := h.MediaService.AssociateMedia(uint(mediaID), input.MediableID, input.MediableType, input.Group); err != nil {
+	if err := h.MediaService.AssociateMedia(c.Request.Context(), mediaID, input.MediableID, input.MediableType, input.Group); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -109,17 +109,16 @@ func (h *mediaHandler) CreateMediaNested(c *gin.Context) {
 	}
 	media := models.Media{
 		Name: input.Name,
-		Size: int(input.Size),
-		// Map other fields as appropriate if they exist in the request and model
+		Size: int64(input.Size),
 	}
-	var parentID *int64
+	var parentID *uint64
 	if pid := c.Query("parent_id"); pid != "" {
-		var parsed int64
+		var parsed uint64
 		if _, err := fmt.Sscan(pid, &parsed); err == nil {
 			parentID = &parsed
 		}
 	}
-	if err := h.MediaService.CreateNested(&media, parentID); err != nil {
+	if err := h.MediaService.CreateNested(c.Request.Context(), &media, parentID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create media (nested)"})
 		return
 	}
@@ -144,14 +143,14 @@ func (h *mediaHandler) MoveMediaNested(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid media ID"})
 		return
 	}
-	var parentID *int64
+	var parentID *uint64
 	if pid := c.Query("parent_id"); pid != "" {
-		var parsed int64
+		var parsed uint64
 		if _, err := fmt.Sscan(pid, &parsed); err == nil {
 			parentID = &parsed
 		}
 	}
-	if err := h.MediaService.MoveNested(uint(id), parentID); err != nil {
+	if err := h.MediaService.MoveNested(c.Request.Context(), id, parentID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move media (nested)"})
 		return
 	}
@@ -172,7 +171,7 @@ func (h *mediaHandler) DeleteMediaNested(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid media ID"})
 		return
 	}
-	if err := h.MediaService.DeleteNested(uint(id)); err != nil {
+	if err := h.MediaService.DeleteNested(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete media (nested)"})
 		return
 	}
@@ -194,7 +193,7 @@ func (h *mediaHandler) GetSiblingMedia(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid media ID"})
 		return
 	}
-	siblings, err := h.MediaService.GetSiblingMedia(uint(id))
+	siblings, err := h.MediaService.GetSiblingMedia(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch siblings"})
 		return
@@ -217,7 +216,7 @@ func (h *mediaHandler) GetParentMedia(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid media ID"})
 		return
 	}
-	parent, err := h.MediaService.GetParentMedia(uint(id))
+	parent, err := h.MediaService.GetParentMedia(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch parent"})
 		return
@@ -244,7 +243,7 @@ func (h *mediaHandler) GetDescendantMedia(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid media ID"})
 		return
 	}
-	descendants, err := h.MediaService.GetDescendantMedia(uint(id))
+	descendants, err := h.MediaService.GetDescendantMedia(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch descendants"})
 		return
@@ -267,7 +266,7 @@ func (h *mediaHandler) GetChildrenMedia(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid media ID"})
 		return
 	}
-	children, err := h.MediaService.GetChildrenMedia(uint(id))
+	children, err := h.MediaService.GetChildrenMedia(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch children"})
 		return

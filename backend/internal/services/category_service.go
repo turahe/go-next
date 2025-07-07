@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"wordpress-go-next/backend/internal/http/responses"
 	"wordpress-go-next/backend/internal/models"
@@ -14,22 +15,22 @@ import (
 
 type CategoryService interface {
 	GetAllCategories(ctx context.Context) ([]models.Category, error)
-	GetCategoryByID(ctx context.Context, id string) (*models.Category, error)
+	GetCategoryByID(ctx context.Context, id uint64) (*models.Category, error)
 	GetCategoryBySlug(ctx context.Context, slug string) (*models.Category, error)
 	GetCategoriesWithPagination(ctx context.Context, page, perPage int) (*responses.PaginationResponse, error)
 	GetRootCategories(ctx context.Context) ([]models.Category, error)
 	GetActiveCategories(ctx context.Context) ([]models.Category, error)
 	CreateCategory(ctx context.Context, category *models.Category) error
 	UpdateCategory(ctx context.Context, category *models.Category) error
-	DeleteCategory(ctx context.Context, id string) error
-	CreateNested(ctx context.Context, category *models.Category, parentID *int64) error
-	MoveNested(ctx context.Context, id uint, newParentID *int64) error
-	DeleteNested(ctx context.Context, id uint) error
-	GetSiblingCategory(ctx context.Context, id uint) ([]models.Category, error)
-	GetParentCategory(ctx context.Context, id uint) (*models.Category, error)
-	GetDescendantCategories(ctx context.Context, id uint) ([]models.Category, error)
-	GetChildrenCategories(ctx context.Context, id uint) ([]models.Category, error)
-	GetAncestorCategories(ctx context.Context, id uint) ([]models.Category, error)
+	DeleteCategory(ctx context.Context, id uint64) error
+	CreateNested(ctx context.Context, category *models.Category, parentID *uint64) error
+	MoveNested(ctx context.Context, id uint64, newParentID *uint64) error
+	DeleteNested(ctx context.Context, id uint64) error
+	GetSiblingCategory(ctx context.Context, id uint64) ([]models.Category, error)
+	GetParentCategory(ctx context.Context, id uint64) (*models.Category, error)
+	GetDescendantCategories(ctx context.Context, id uint64) ([]models.Category, error)
+	GetChildrenCategories(ctx context.Context, id uint64) ([]models.Category, error)
+	GetAncestorCategories(ctx context.Context, id uint64) ([]models.Category, error)
 	SearchCategories(ctx context.Context, query string) ([]models.Category, error)
 	GetCategoryStats(ctx context.Context, categoryID string) (map[string]interface{}, error)
 	GetCategoryCount(ctx context.Context) (int64, error)
@@ -39,6 +40,9 @@ type CategoryService interface {
 type categoryService struct {
 	*BaseService
 }
+
+// Global service instance
+var CategorySvc CategoryService
 
 func NewCategoryService(redisService *redis.RedisService) CategoryService {
 	return &categoryService{
@@ -58,11 +62,11 @@ func (s *categoryService) GetAllCategories(ctx context.Context) ([]models.Catego
 	return categories, nil
 }
 
-func (s *categoryService) GetCategoryByID(ctx context.Context, id string) (*models.Category, error) {
+func (s *categoryService) GetCategoryByID(ctx context.Context, id uint64) (*models.Category, error) {
 	var category models.Category
-	cacheKey := s.GetCacheKey(redis.CategoryCachePrefix, id)
+	cacheKey := s.GetCacheKey(redis.CategoryCachePrefix, strconv.FormatUint(id, 10))
 
-	err := s.GetByIDWithCacheAndPreload(ctx, id, &category, cacheKey, redis.DefaultTTL, "Posts", "Parent", "Children")
+	err := s.GetByIDWithCacheAndPreload(ctx, strconv.FormatUint(id, 10), &category, cacheKey, redis.DefaultTTL, "Posts", "Parent", "Children")
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +93,10 @@ func (s *categoryService) GetCategoryBySlug(ctx context.Context, slug string) (*
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, &category, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, &category, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &category, nil
@@ -140,7 +147,10 @@ func (s *categoryService) GetRootCategories(ctx context.Context) ([]models.Categ
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return categories, nil
@@ -165,7 +175,10 @@ func (s *categoryService) GetActiveCategories(ctx context.Context) ([]models.Cat
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, categories, redis.ShortTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, categories, redis.ShortTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return categories, nil
@@ -179,7 +192,7 @@ func (s *categoryService) UpdateCategory(ctx context.Context, category *models.C
 	return s.UpdateWithCache(ctx, category, redis.CategoryCachePrefix)
 }
 
-func (s *categoryService) DeleteCategory(ctx context.Context, id string) error {
+func (s *categoryService) DeleteCategory(ctx context.Context, id uint64) error {
 	category := &models.Category{}
 	if err := database.DB.First(category, id).Error; err != nil {
 		return err
@@ -188,10 +201,10 @@ func (s *categoryService) DeleteCategory(ctx context.Context, id string) error {
 	return s.DeleteWithCache(ctx, category, redis.CategoryCachePrefix)
 }
 
-func (s *categoryService) CreateNested(ctx context.Context, category *models.Category, parentID *int64) error {
+func (s *categoryService) CreateNested(ctx context.Context, category *models.Category, parentID *uint64) error {
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
-		var left int64
-		var depth int64 = 0
+		var left uint64
+		var depth uint64 = 0
 		if parentID != nil {
 			var parent models.Category
 			if err := tx.First(&parent, *parentID).Error; err != nil {
@@ -225,13 +238,16 @@ func (s *categoryService) CreateNested(ctx context.Context, category *models.Cat
 
 	// Invalidate caches
 	if s.Redis != nil {
-		s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.CategoryCachePrefix))
+		err := s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.CategoryCachePrefix))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (s *categoryService) MoveNested(ctx context.Context, id uint, newParentID *int64) error {
+func (s *categoryService) MoveNested(ctx context.Context, id uint64, newParentID *uint64) error {
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
 		var node models.Category
 		if err := tx.First(&node, id).Error; err != nil {
@@ -244,8 +260,8 @@ func (s *categoryService) MoveNested(ctx context.Context, id uint, newParentID *
 		right := *node.RecordRight
 		width := right - left + 1
 
-		var newParentRight int64
-		var newDepth int64 = 0
+		var newParentRight uint64
+		var newDepth uint64 = 0
 		if newParentID != nil {
 			var newParent models.Category
 			if err := tx.First(&newParent, *newParentID).Error; err != nil {
@@ -267,7 +283,7 @@ func (s *categoryService) MoveNested(ctx context.Context, id uint, newParentID *
 			return gorm.ErrInvalidData
 		}
 
-		var offset int64
+		var offset uint64
 		if newParentRight > right {
 			offset = newParentRight - right - 1
 		} else {
@@ -301,7 +317,7 @@ func (s *categoryService) MoveNested(ctx context.Context, id uint, newParentID *
 				depthDiff = newDepth - *node.RecordDept
 			}
 			tx.Model(&models.Category{}).
-				Where("record_left <= ? AND record_right >= ?", temp*left, temp*right).
+				Where("record_left <= ? AND record_right >= ?", temp*int64(left), temp*int64(right)).
 				Updates(map[string]interface{}{
 					"record_left":  gorm.Expr("record_left * -1 + ?", offset),
 					"record_right": gorm.Expr("record_right * -1 + ?", offset),
@@ -319,7 +335,7 @@ func (s *categoryService) MoveNested(ctx context.Context, id uint, newParentID *
 				depthDiff = newDepth - *node.RecordDept
 			}
 			tx.Model(&models.Category{}).
-				Where("record_left <= ? AND record_right >= ?", temp*left, temp*right).
+				Where("record_left <= ? AND record_right >= ?", temp*int64(left), temp*int64(right)).
 				Updates(map[string]interface{}{
 					"record_left":  gorm.Expr("record_left * -1 + ?", offset),
 					"record_right": gorm.Expr("record_right * -1 + ?", offset),
@@ -338,13 +354,16 @@ func (s *categoryService) MoveNested(ctx context.Context, id uint, newParentID *
 
 	// Invalidate caches
 	if s.Redis != nil {
-		s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.CategoryCachePrefix))
+		err := s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.CategoryCachePrefix))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (s *categoryService) DeleteNested(ctx context.Context, id uint) error {
+func (s *categoryService) DeleteNested(ctx context.Context, id uint64) error {
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
 		var node models.Category
 		if err := tx.First(&node, id).Error; err != nil {
@@ -368,13 +387,16 @@ func (s *categoryService) DeleteNested(ctx context.Context, id uint) error {
 
 	// Invalidate caches
 	if s.Redis != nil {
-		s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.CategoryCachePrefix))
+		err := s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.CategoryCachePrefix))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (s *categoryService) GetSiblingCategory(ctx context.Context, id uint) ([]models.Category, error) {
+func (s *categoryService) GetSiblingCategory(ctx context.Context, id uint64) ([]models.Category, error) {
 	var categories []models.Category
 	cacheKey := fmt.Sprintf("%ssiblings:%d", redis.CategoryCachePrefix, id)
 
@@ -394,13 +416,16 @@ func (s *categoryService) GetSiblingCategory(ctx context.Context, id uint) ([]mo
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return categories, nil
 }
 
-func (s *categoryService) GetParentCategory(ctx context.Context, id uint) (*models.Category, error) {
+func (s *categoryService) GetParentCategory(ctx context.Context, id uint64) (*models.Category, error) {
 	var category models.Category
 	cacheKey := fmt.Sprintf("%sparent:%d", redis.CategoryCachePrefix, id)
 
@@ -420,13 +445,16 @@ func (s *categoryService) GetParentCategory(ctx context.Context, id uint) (*mode
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, &category, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, &category, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &category, nil
 }
 
-func (s *categoryService) GetDescendantCategories(ctx context.Context, id uint) ([]models.Category, error) {
+func (s *categoryService) GetDescendantCategories(ctx context.Context, id uint64) ([]models.Category, error) {
 	var categories []models.Category
 	cacheKey := fmt.Sprintf("%sdescendants:%d", redis.CategoryCachePrefix, id)
 
@@ -446,13 +474,16 @@ func (s *categoryService) GetDescendantCategories(ctx context.Context, id uint) 
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return categories, nil
 }
 
-func (s *categoryService) GetChildrenCategories(ctx context.Context, id uint) ([]models.Category, error) {
+func (s *categoryService) GetChildrenCategories(ctx context.Context, id uint64) ([]models.Category, error) {
 	var categories []models.Category
 	cacheKey := fmt.Sprintf("%schildren:%d", redis.CategoryCachePrefix, id)
 
@@ -471,13 +502,16 @@ func (s *categoryService) GetChildrenCategories(ctx context.Context, id uint) ([
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return categories, nil
 }
 
-func (s *categoryService) GetAncestorCategories(ctx context.Context, id uint) ([]models.Category, error) {
+func (s *categoryService) GetAncestorCategories(ctx context.Context, id uint64) ([]models.Category, error) {
 	var categories []models.Category
 	cacheKey := fmt.Sprintf("%sancestors:%d", redis.CategoryCachePrefix, id)
 
@@ -497,7 +531,10 @@ func (s *categoryService) GetAncestorCategories(ctx context.Context, id uint) ([
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return categories, nil
@@ -524,7 +561,10 @@ func (s *categoryService) SearchCategories(ctx context.Context, query string) ([
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, categories, redis.ShortTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, categories, redis.ShortTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return categories, nil
@@ -571,7 +611,10 @@ func (s *categoryService) GetCategoryStats(ctx context.Context, categoryID strin
 
 	// Cache the stats
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, stats, redis.ShortTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, stats, redis.ShortTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return stats, nil
@@ -596,7 +639,10 @@ func (s *categoryService) GetCategoryCount(ctx context.Context) (int64, error) {
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, count, redis.LongTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, count, redis.LongTTL)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	return count, nil
@@ -621,60 +667,11 @@ func (s *categoryService) GetCategoryTree(ctx context.Context) ([]models.Categor
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, categories, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return categories, nil
 }
-
-// Legacy methods for backward compatibility
-func (s *categoryService) GetAllCategories() ([]models.Category, error) {
-	return s.GetAllCategories(context.Background())
-}
-
-func (s *categoryService) GetCategoryByID(id string) (*models.Category, error) {
-	return s.GetCategoryByID(context.Background(), id)
-}
-
-func (s *categoryService) CreateCategory(category *models.Category) error {
-	return s.CreateCategory(context.Background(), category)
-}
-
-func (s *categoryService) UpdateCategory(category *models.Category) error {
-	return s.UpdateCategory(context.Background(), category)
-}
-
-func (s *categoryService) DeleteCategory(id string) error {
-	return s.DeleteCategory(context.Background(), id)
-}
-
-func (s *categoryService) CreateNested(category *models.Category, parentID *int64) error {
-	return s.CreateNested(context.Background(), category, parentID)
-}
-
-func (s *categoryService) MoveNested(id uint, newParentID *int64) error {
-	return s.MoveNested(context.Background(), id, newParentID)
-}
-
-func (s *categoryService) DeleteNested(id uint) error {
-	return s.DeleteNested(context.Background(), id)
-}
-
-func (s *categoryService) GetSiblingCategory(id uint) ([]models.Category, error) {
-	return s.GetSiblingCategory(context.Background(), id)
-}
-
-func (s *categoryService) GetParentCategory(id uint) (*models.Category, error) {
-	return s.GetParentCategory(context.Background(), id)
-}
-
-func (s *categoryService) GetDescendantCategories(id uint) ([]models.Category, error) {
-	return s.GetDescendantCategories(context.Background(), id)
-}
-
-func (s *categoryService) GetChildrenCategories(id uint) ([]models.Category, error) {
-	return s.GetChildrenCategories(context.Background(), id)
-}
-
-// Global service instance
-var CategorySvc CategoryService

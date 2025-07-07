@@ -24,15 +24,14 @@ func NewUserRoleHandler(userRoleService services.UserRoleService) UserRoleHandle
 }
 
 func (h *userRoleHandler) AssignRoleToUser(c *gin.Context) {
-	var input requests.UserRoleAssignmentInput
+	var input requests.UserRoleAssignmentRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	user := &models.User{ID: 0}
-	role := &models.Role{ID: input.RoleID}
-	user.ID = 0
-	if err := h.UserRoleService.AssignRoleToUser(user, role); err != nil {
+	user := &models.User{}
+	role := &models.Role{Base: models.Base{ID: input.RoleID}}
+	if err := h.UserRoleService.AssignRoleToUser(c.Request.Context(), user, role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign role"})
 		return
 	}
@@ -40,11 +39,9 @@ func (h *userRoleHandler) AssignRoleToUser(c *gin.Context) {
 }
 
 func (h *userRoleHandler) RemoveRoleFromUser(c *gin.Context) {
-	user := &models.User{ID: 0}
-	role := &models.Role{ID: 0}
-	user.ID = 0
-	role.ID = 0
-	if err := h.UserRoleService.RemoveRoleFromUser(user, role); err != nil {
+	user := &models.User{}
+	role := &models.Role{}
+	if err := h.UserRoleService.RemoveRoleFromUser(c.Request.Context(), user, role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove role"})
 		return
 	}
@@ -52,9 +49,8 @@ func (h *userRoleHandler) RemoveRoleFromUser(c *gin.Context) {
 }
 
 func (h *userRoleHandler) ListUserRoles(c *gin.Context) {
-	user := &models.User{ID: 0}
-	user.ID = 0
-	roles, err := h.UserRoleService.ListUserRoles(user)
+	user := &models.User{}
+	roles, err := h.UserRoleService.ListUserRoles(c.Request.Context(), user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list roles"})
 		return

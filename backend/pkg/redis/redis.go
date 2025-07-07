@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-	"wordpress-go-next/backend/internal/models"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -232,17 +231,6 @@ func (r *RedisService) InvalidateRoleCache(ctx context.Context, roleID string) e
 	return r.DeletePattern(ctx, pattern)
 }
 
-// Cache warming helpers
-func (r *RedisService) WarmUserCache(ctx context.Context, user *models.User) error {
-	key := fmt.Sprintf("%s%s", UserCachePrefix, user.ID)
-	return r.SetCache(ctx, key, user, DefaultTTL)
-}
-
-func (r *RedisService) WarmPostCache(ctx context.Context, post *models.Post) error {
-	key := fmt.Sprintf("%s%s", PostCachePrefix, post.ID)
-	return r.SetCache(ctx, key, post, DefaultTTL)
-}
-
 // Utility functions
 func (r *RedisService) Ping(ctx context.Context) error {
 	return r.Client.Ping(ctx).Err()
@@ -252,35 +240,6 @@ func (r *RedisService) Close() error {
 	return r.Client.Close()
 }
 
-// Get cache key helpers
-func GetUserCacheKey(userID string) string {
-	return fmt.Sprintf("%s%s", UserCachePrefix, userID)
-}
-
-func GetPostCacheKey(postID string) string {
-	return fmt.Sprintf("%s%s", PostCachePrefix, postID)
-}
-
-func GetCategoryCacheKey(categoryID string) string {
-	return fmt.Sprintf("%s%s", CategoryCachePrefix, categoryID)
-}
-
-func GetCommentCacheKey(commentID string) string {
-	return fmt.Sprintf("%s%s", CommentCachePrefix, commentID)
-}
-
-func GetMediaCacheKey(mediaID string) string {
-	return fmt.Sprintf("%s%s", MediaCachePrefix, mediaID)
-}
-
-func GetRoleCacheKey(roleID string) string {
-	return fmt.Sprintf("%s%s", RoleCachePrefix, roleID)
-}
-
-func GetSearchCacheKey(query string) string {
-	return fmt.Sprintf("%s%s", SearchCachePrefix, query)
-}
-
-func GetStatsCacheKey(statType string) string {
-	return fmt.Sprintf("%s%s", StatsCachePrefix, statType)
+func (r *RedisService) Incr(ctx context.Context, key string) error {
+	return r.Client.Incr(ctx, key).Err()
 }

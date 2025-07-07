@@ -35,7 +35,7 @@ func NewPostHandler(postService services.PostService) PostHandler {
 // @Failure      500  {object}  map[string]string
 // @Router       /posts [get]
 func (h *postHandler) GetPosts(c *gin.Context) {
-	posts, err := h.PostService.GetAllPosts()
+	posts, err := h.PostService.GetAllPosts(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch posts"})
 		return
@@ -54,7 +54,7 @@ func (h *postHandler) GetPosts(c *gin.Context) {
 // @Router       /posts/{id} [get]
 func (h *postHandler) GetPost(c *gin.Context) {
 	id := c.Param("id")
-	post, err := h.PostService.GetPostByID(id)
+	post, err := h.PostService.GetPostByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
 		return
@@ -79,20 +79,18 @@ func (h *postHandler) CreatePost(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	uid := userID.(uint)
 	post := models.Post{
 		Title:      input.Title,
-		Content:    input.Content,
-		CategoryID: input.CategoryID,
-		CreatedBy:  &uid,
-		UpdatedBy:  &uid,
+		CategoryID: uint(input.CategoryID),
 	}
-	if err := h.PostService.CreatePost(&post); err != nil {
+	for _, c := range input.Contents {
+		post.Contents = append(post.Contents, models.Content{
+			Content:   c.Content,
+			Type:      c.Type,
+			ModelType: "post",
+		})
+	}
+	if err := h.PostService.CreatePost(c.Request.Context(), &post); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create post"})
 		return
 	}
@@ -114,7 +112,7 @@ func (h *postHandler) CreatePost(c *gin.Context) {
 // @Router       /posts/{id} [put]
 func (h *postHandler) UpdatePost(c *gin.Context) {
 	id := c.Param("id")
-	post, err := h.PostService.GetPostByID(id)
+	post, err := h.PostService.GetPostByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
 		return
@@ -125,9 +123,16 @@ func (h *postHandler) UpdatePost(c *gin.Context) {
 		return
 	}
 	post.Title = input.Title
-	post.Content = input.Content
-	post.CategoryID = input.CategoryID
-	if err := h.PostService.UpdatePost(post); err != nil {
+	post.CategoryID = uint(input.CategoryID)
+	post.Contents = nil
+	for _, c := range input.Contents {
+		post.Contents = append(post.Contents, models.Content{
+			Content:   c.Content,
+			Type:      c.Type,
+			ModelType: "post",
+		})
+	}
+	if err := h.PostService.UpdatePost(c.Request.Context(), post); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update post"})
 		return
 	}
@@ -144,7 +149,7 @@ func (h *postHandler) UpdatePost(c *gin.Context) {
 // @Router       /posts/{id} [delete]
 func (h *postHandler) DeletePost(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.PostService.DeletePost(id); err != nil {
+	if err := h.PostService.DeletePost(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete post"})
 		return
 	}

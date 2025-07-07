@@ -41,7 +41,7 @@ func NewUserHandler(userService services.UserService) UserHandler {
 // @Router       /users/{id} [get]
 func (h *userHandler) GetUserProfile(c *gin.Context) {
 	id := c.Param("id")
-	user, err := h.UserService.GetUserByID(id)
+	user, err := h.UserService.GetUserByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
@@ -72,12 +72,12 @@ func (h *userHandler) UpdateUserProfile(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You can only update your own profile"})
 		return
 	}
-	user, err := h.UserService.GetUserByID(id)
+	user, err := h.UserService.GetUserByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
-	var input requests.UserProfileUpdateInput
+	var input requests.UserProfileUpdateRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
@@ -86,7 +86,7 @@ func (h *userHandler) UpdateUserProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
 		return
 	}
-	if err := h.UserService.UpdateUserProfile(user, input.Username, input.Email, input.Phone, input.EmailVerified, input.PhoneVerified); err != nil {
+	if err := h.UserService.UpdateUserProfile(c.Request.Context(), user, input.Username, input.Email, input.Phone, input.EmailVerified, input.PhoneVerified); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 		return
 	}
@@ -108,7 +108,7 @@ func (h *userHandler) UpdateUserProfile(c *gin.Context) {
 // @Router       /users/{id}/role [put]
 func (h *userHandler) UpdateUserRole(c *gin.Context) {
 	id := c.Param("id")
-	user, err := h.UserService.GetUserByID(id)
+	user, err := h.UserService.GetUserByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return

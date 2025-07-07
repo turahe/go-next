@@ -8,7 +8,7 @@ import (
 
 // Base contains common fields for all models
 type Base struct {
-	ID        uint           `gorm:"primaryKey;autoIncrement" json:"id"`
+	ID        uint64         `gorm:"primaryKey;autoIncrement" json:"id"`
 	CreatedAt time.Time      `gorm:"not null;default:CURRENT_TIMESTAMP" json:"created_at"`
 	UpdatedAt time.Time      `gorm:"not null;default:CURRENT_TIMESTAMP" json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
@@ -17,19 +17,19 @@ type Base struct {
 // BaseWithUser contains common fields for models that track user actions
 type BaseWithUser struct {
 	Base
-	CreatedBy *uint `gorm:"index" json:"created_by,omitempty"`
-	UpdatedBy *uint `gorm:"index" json:"updated_by,omitempty"`
-	DeletedBy *uint `gorm:"index" json:"deleted_by,omitempty"`
+	CreatedBy *uint64 `gorm:"index" json:"created_by,omitempty"`
+	UpdatedBy *uint64 `gorm:"index" json:"updated_by,omitempty"`
+	DeletedBy *uint64 `gorm:"index" json:"deleted_by,omitempty"`
 }
 
 // BaseWithHierarchy contains common fields for hierarchical models (nested sets)
 type BaseWithHierarchy struct {
 	Base
-	RecordLeft     *int64 `gorm:"index" json:"record_left,omitempty"`
-	RecordRight    *int64 `gorm:"index" json:"record_right,omitempty"`
-	RecordDept     *int64 `gorm:"index" json:"record_dept,omitempty"`
-	RecordOrdering *int64 `gorm:"index" json:"record_ordering,omitempty"`
-	ParentID       *int64 `gorm:"index" json:"parent_id,omitempty"`
+	RecordLeft     *uint64 `gorm:"index" json:"record_left,omitempty"`
+	RecordRight    *uint64 `gorm:"index" json:"record_right,omitempty"`
+	RecordDept     *uint64 `gorm:"index" json:"record_dept,omitempty"`
+	RecordOrdering *uint64 `gorm:"index" json:"record_ordering,omitempty"`
+	ParentID       *uint64 `gorm:"index" json:"parent_id,omitempty"`
 }
 
 // BeforeCreate sets timestamps before creating a record

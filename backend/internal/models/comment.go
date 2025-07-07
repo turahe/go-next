@@ -2,7 +2,6 @@ package models
 
 import (
 	"errors"
-	"strings"
 
 	"gorm.io/gorm"
 )
@@ -10,10 +9,9 @@ import (
 // Comment represents a comment on a post with hierarchical structure
 type Comment struct {
 	BaseWithHierarchy
-	Content string `gorm:"type:text;not null" json:"content" validate:"required,min=1,max=10000"`
-	UserID  uint   `gorm:"not null;index" json:"user_id" validate:"required"`
-	PostID  uint   `gorm:"not null;index" json:"post_id" validate:"required"`
-	Status  string `gorm:"default:'pending';index;size:20" json:"status" validate:"oneof=pending approved rejected"`
+	UserID uint64 `gorm:"not null;index" json:"user_id" validate:"required"`
+	PostID uint64 `gorm:"not null;index" json:"post_id" validate:"required"`
+	Status string `gorm:"default:'pending';index;size:20" json:"status" validate:"oneof=pending approved rejected"`
 
 	// Relationships
 	User     User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
@@ -21,6 +19,7 @@ type Comment struct {
 	Medias   []Media   `gorm:"foreignKey:ModelID;constraint:OnDelete:CASCADE" json:"medias,omitempty"`
 	Parent   *Comment  `gorm:"foreignKey:ParentID" json:"parent,omitempty"`
 	Children []Comment `gorm:"foreignKey:ParentID" json:"children,omitempty"`
+	Content  *Content  `gorm:"foreignKey:ModelID;polymorphic:Model;polymorphicValue:comment;constraint:OnDelete:CASCADE" json:"content,omitempty"`
 }
 
 // TableName specifies the table name for Comment
@@ -38,9 +37,6 @@ func (c *Comment) BeforeCreate(tx *gorm.DB) error {
 		c.Status = "pending"
 	}
 
-	// Clean content
-	c.Content = strings.TrimSpace(c.Content)
-
 	return c.validate()
 }
 
@@ -50,22 +46,11 @@ func (c *Comment) BeforeUpdate(tx *gorm.DB) error {
 		return err
 	}
 
-	// Clean content
-	c.Content = strings.TrimSpace(c.Content)
-
 	return c.validate()
 }
 
 // validate performs validation on comment fields
 func (c *Comment) validate() error {
-	if len(strings.TrimSpace(c.Content)) < 1 {
-		return errors.New("comment content cannot be empty")
-	}
-
-	if len(c.Content) > 10000 {
-		return errors.New("comment content cannot exceed 10000 characters")
-	}
-
 	if c.UserID == 0 {
 		return errors.New("user is required")
 	}
@@ -87,7 +72,7 @@ func (c *Comment) validate() error {
 	}
 
 	// Prevent circular references
-	if c.ParentID != nil && *c.ParentID == int64(c.ID) {
+	if c.ParentID != nil && *c.ParentID == c.ID {
 		return errors.New("comment cannot be its own parent")
 	}
 
@@ -130,7 +115,7 @@ func (c *Comment) Reject() {
 }
 
 // GetDepth returns the depth of this comment in the hierarchy
-func (c *Comment) GetDepth() int64 {
+func (c *Comment) GetDepth() uint64 {
 	if c.RecordDept != nil {
 		return *c.RecordDept
 	}
@@ -149,6 +134,5 @@ func (c *Comment) HasReplies() bool {
 
 // GetWordCount returns the number of words in the comment
 func (c *Comment) GetWordCount() int {
-	words := strings.Fields(c.Content)
-	return len(words)
+	return 0
 }

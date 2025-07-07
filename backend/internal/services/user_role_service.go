@@ -16,7 +16,7 @@ type UserRoleService interface {
 	ListUserRoles(ctx context.Context, user *models.User) ([]models.Role, error)
 	GetUsersByRole(ctx context.Context, role *models.Role) ([]models.User, error)
 	HasRole(ctx context.Context, user *models.User, roleName string) (bool, error)
-	InvalidateUserRoleCache(ctx context.Context, userID uint) error
+	InvalidateUserRoleCache(ctx context.Context, userID uint64) error
 }
 
 type userRoleService struct {
@@ -35,11 +35,11 @@ const (
 	roleUserCacheKeyPrefix = "role_user:"
 )
 
-func (s *userRoleService) getUserRoleCacheKey(userID uint) string {
+func (s *userRoleService) getUserRoleCacheKey(userID uint64) string {
 	return fmt.Sprintf("%s%d", userRoleCacheKeyPrefix, userID)
 }
 
-func (s *userRoleService) getRoleUserCacheKey(roleID uint) string {
+func (s *userRoleService) getRoleUserCacheKey(roleID uint64) string {
 	return fmt.Sprintf("%s%d", roleUserCacheKeyPrefix, roleID)
 }
 
@@ -84,7 +84,10 @@ func (s *userRoleService) ListUserRoles(ctx context.Context, user *models.User) 
 
 	// Cache the result
 	if data, err := json.Marshal(u.Roles); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return u.Roles, err
@@ -113,7 +116,10 @@ func (s *userRoleService) GetUsersByRole(ctx context.Context, role *models.Role)
 
 	// Cache the result
 	if data, err := json.Marshal(users); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return users, err
@@ -134,13 +140,13 @@ func (s *userRoleService) HasRole(ctx context.Context, user *models.User, roleNa
 	return false, nil
 }
 
-func (s *userRoleService) InvalidateUserRoleCache(ctx context.Context, userID uint) error {
+func (s *userRoleService) InvalidateUserRoleCache(ctx context.Context, userID uint64) error {
 	s.invalidateUserRoleCaches(ctx, userID, 0)
 	return nil
 }
 
 // Helper methods
-func (s *userRoleService) invalidateUserRoleCaches(ctx context.Context, userID, roleID uint) {
+func (s *userRoleService) invalidateUserRoleCaches(ctx context.Context, userID, roleID uint64) {
 	cacheKeys := []string{
 		s.getUserRoleCacheKey(userID),
 	}
@@ -150,7 +156,10 @@ func (s *userRoleService) invalidateUserRoleCaches(ctx context.Context, userID, 
 	}
 
 	for _, key := range cacheKeys {
-		s.Redis.Delete(ctx, key)
+		err := s.Redis.Delete(ctx, key)
+		if err != nil {
+			return
+		}
 	}
 }
 

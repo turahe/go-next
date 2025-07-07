@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"os"
-	"wordpress-go-next/backend/internal"
+	startup "wordpress-go-next/backend/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -23,7 +23,7 @@ var serverCmd = &cobra.Command{
 		// Set environment variables so internal.RunServer can use them
 		_ = os.Setenv("HOST", host)
 		_ = os.Setenv("PORT", port)
-		internal.RunServer(host, port)
+		startup.RunServer(host, port)
 	},
 }
 

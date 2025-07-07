@@ -1,29 +1,32 @@
 package routers
 
 import (
+	"log"
+	"wordpress-go-next/backend/docs"
 	"wordpress-go-next/backend/internal/http/controllers"
 	"wordpress-go-next/backend/internal/http/middleware"
+	v1 "wordpress-go-next/backend/internal/routers/v1"
 	"wordpress-go-next/backend/internal/services"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
+// RegisterRoutes registers all API routes to the given Gin engine.
 func RegisterRoutes(r *gin.Engine) {
-	authHandler := controllers.NewAuthHandler()
-	adminAuthHandler := controllers.NewAdminAuthHandler()
-	// Services are now initialized in startup.go
-	mediaSvc := services.ServiceMgr.MediaService
+	authHandler := controllers.NewAuthHandler(services.AuthSvc)
+	adminAuthHandler := controllers.NewAuthHandler(services.AuthSvc)
+	// Initialize handlers for posts, comments, categories, users, roles, media
 	postHandler := controllers.NewPostHandler(services.PostSvc)
-	categoryHandler := controllers.NewCategoryHandler(services.CategorySvc, mediaSvc)
 	commentHandler := controllers.NewCommentHandler(services.CommentSvc)
+	mediaSvc := services.ServiceMgr.MediaService
+	categoryHandler := controllers.NewCategoryHandler(services.CategorySvc, mediaSvc)
 	userHandler := controllers.NewUserHandler(services.UserSvc)
+	userRoleHandler := controllers.NewUserRoleHandler(services.UserRoleSvc)
 	roleHandler := controllers.NewRoleHandler(services.RoleSvc)
 	mediaHandler := controllers.NewMediaHandler(mediaSvc)
-	userRoleHandler := controllers.NewUserRoleHandler(services.UserRoleSvc)
-
-	// Initialize logger for tag handler
-	logger := services.GetLogger("TagHandler")
-	tagHandler := controllers.NewTagHandler(services.TagSvc, logger)
+	tagHandler := controllers.NewTagHandler(services.TagSvc, nil)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.String(200, "OK")
@@ -35,108 +38,44 @@ func RegisterRoutes(r *gin.Engine) {
 
 	api := r.Group("/api/v1")
 
-	// Tags
-	tags := api.Group("/tags")
-	{
-		tags.GET("", tagHandler.ListTags)
-		tags.GET("/search", tagHandler.SearchTags)
-		tags.GET("/count", tagHandler.GetTagCount)
-		tags.GET("/slug/:slug", tagHandler.GetTagBySlug)
-		tags.GET("/:id", tagHandler.GetTagByID)
-		tags.POST("", middleware.JWTMiddleware(), tagHandler.CreateTag)
-		tags.PUT("/:id", middleware.JWTMiddleware(), tagHandler.UpdateTag)
-		tags.DELETE("/:id", middleware.JWTMiddleware(), tagHandler.DeleteTag)
-
-		// Entity tagging
-		tags.GET("/entity", tagHandler.GetTagsByEntity)
-		tags.POST("/entity", middleware.JWTMiddleware(), tagHandler.AddTagToEntity)
-		tags.DELETE("/entity", middleware.JWTMiddleware(), tagHandler.RemoveTagFromEntity)
-		tags.GET("/entities", tagHandler.GetEntitiesByTag)
-	}
-
-	// Posts
-	posts := api.Group("/posts")
-	{
-		posts.GET("", postHandler.GetPosts)
-		posts.GET(":id", postHandler.GetPost)
-		posts.POST("", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "POST"), postHandler.CreatePost)
-		posts.PUT(":id", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "PUT"), postHandler.UpdatePost)
-		posts.DELETE(":id", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "DELETE"), postHandler.DeletePost)
-		posts.GET(":post_id/comments", commentHandler.GetCommentsByPost)
-	}
-
-	// Categories
-	categories := api.Group("/categories")
-	{
-		categories.GET("", categoryHandler.GetCategories)
-		categories.GET(":id", categoryHandler.GetCategory)
-		categories.GET(":id/children", categoryHandler.GetChildrenCategories)
-		categories.POST("", middleware.JWTMiddleware(), categoryHandler.CreateCategory)
-		categories.PUT(":id", middleware.JWTMiddleware(), categoryHandler.UpdateCategory)
-		categories.DELETE(":id", middleware.JWTMiddleware(), categoryHandler.DeleteCategory)
-		categories.POST("/nested", middleware.JWTMiddleware(), categoryHandler.CreateCategoryNested)
-		categories.POST(":id/move", middleware.JWTMiddleware(), categoryHandler.MoveCategoryNested)
-		categories.DELETE(":id/nested", middleware.JWTMiddleware(), categoryHandler.DeleteCategoryNested)
-	}
-
-	// Comments
-	comments := api.Group("/comments")
-	{
-		comments.GET(":id", commentHandler.GetComment)
-		comments.GET(":id/siblings", commentHandler.GetSiblingComments)
-		comments.GET(":id/parent", commentHandler.GetParentComment)
-		comments.GET(":id/descendants", commentHandler.GetDescendantComments)
-		comments.GET(":id/children", commentHandler.GetChildrenComments)
-		comments.POST("", middleware.JWTMiddleware(), commentHandler.CreateComment)
-		comments.PUT(":id", middleware.JWTMiddleware(), commentHandler.UpdateComment)
-		comments.DELETE(":id", middleware.JWTMiddleware(), commentHandler.DeleteComment)
-		comments.POST("/nested", middleware.JWTMiddleware(), commentHandler.CreateCommentNested)
-		comments.POST(":id/move", middleware.JWTMiddleware(), commentHandler.MoveCommentNested)
-		comments.DELETE(":id/nested", middleware.JWTMiddleware(), commentHandler.DeleteCommentNested)
-	}
-
-	// Users
-	users := api.Group("/users")
-	{
-		users.GET(":id", userHandler.GetUserProfile)
-		users.PUT(":id", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/users", "PUT"), userHandler.UpdateUserProfile)
-		users.PUT(":id/role", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/users", "PUT"), userHandler.UpdateUserRole)
-		users.POST(":id/roles", middleware.JWTMiddleware(), userRoleHandler.AssignRoleToUser)
-		users.DELETE(":id/roles/:role_id", middleware.JWTMiddleware(), userRoleHandler.RemoveRoleFromUser)
-		users.GET(":id/roles", middleware.JWTMiddleware(), userRoleHandler.ListUserRoles)
-		users.POST(":id/request-email-verification", authHandler.RequestEmailVerification)
-		users.POST(":id/verify-email", authHandler.VerifyEmail)
-		users.POST(":id/request-phone-verification", authHandler.RequestPhoneVerification)
-		users.POST(":id/verify-phone", authHandler.VerifyPhone)
-	}
-
-	// Roles
-	roles := api.Group("/roles")
-	{
-		roles.GET("", roleHandler.GetRoles)
-		roles.GET(":id", roleHandler.GetRole)
-		roles.POST("", middleware.JWTMiddleware(), roleHandler.CreateRole)
-		roles.PUT(":id", middleware.JWTMiddleware(), roleHandler.UpdateRole)
-		roles.DELETE(":id", middleware.JWTMiddleware(), roleHandler.DeleteRole)
-	}
-
-	// Media
-	media := api.Group("/media")
-	{
-		media.POST("/upload", middleware.JWTMiddleware(), mediaHandler.UploadMedia)
-		media.POST(":id/associate", middleware.JWTMiddleware(), mediaHandler.AssociateMedia)
-		media.GET(":id/siblings", mediaHandler.GetSiblingMedia)
-		media.GET(":id/parent", mediaHandler.GetParentMedia)
-		media.GET(":id/descendants", mediaHandler.GetDescendantMedia)
-		media.GET(":id/children", mediaHandler.GetChildrenMedia)
-		media.POST("/nested", middleware.JWTMiddleware(), mediaHandler.CreateMediaNested)
-		media.POST(":id/move", middleware.JWTMiddleware(), mediaHandler.MoveMediaNested)
-		media.DELETE(":id/nested", middleware.JWTMiddleware(), mediaHandler.DeleteMediaNested)
-	}
+	v1.RegisterTagRoutes(api, tagHandler)
+	v1.RegisterPostRoutes(api, postHandler, commentHandler)
+	v1.RegisterCategoryRoutes(api, categoryHandler)
+	v1.RegisterCommentRoutes(api, commentHandler)
+	v1.RegisterUserRoutes(api, userHandler, userRoleHandler, authHandler)
+	v1.RegisterRoleRoutes(api, roleHandler)
+	v1.RegisterMediaRoutes(api, mediaHandler)
 
 	// Password reset (not grouped under users for simplicity)
 	api.POST("/request-password-reset", authHandler.RequestPasswordReset)
 	api.POST("/reset-password", authHandler.ResetPassword)
 	// Refresh token endpoint
 	api.POST("/auth/refresh", authHandler.RefreshToken)
+}
+
+// RunServer sets up the Gin engine, middleware, Swagger docs, and starts the server.
+func RunServer(host, port string) {
+	r := gin.Default()
+
+	r.Use(middleware.CORSMiddleware())
+	r.Use(middleware.RateLimitMiddleware())
+
+	docs.SwaggerInfo.Title = "WordPress Go Next API"
+	docs.SwaggerInfo.Description = "API documentation for the WordPress Go Next backend."
+	docs.SwaggerInfo.Version = "1.0"
+	docs.SwaggerInfo.BasePath = "/api"
+
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	RegisterRoutes(r)
+
+	if port == "" {
+		port = "8080"
+	}
+	if host == "" {
+		host = "0.0.0.0"
+	}
+	addr := host + ":" + port
+	log.Printf("Starting server on %s...", addr)
+	r.Run(addr)
 }

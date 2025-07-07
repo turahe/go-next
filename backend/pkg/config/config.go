@@ -37,6 +37,11 @@ type SMTPConfig struct {
 	From     string
 }
 
+type WhatsAppConfig struct {
+	BaseURL string
+	Session string
+}
+
 type Configuration struct {
 	Database  DatabaseConfig
 	Port      string
@@ -44,6 +49,7 @@ type Configuration struct {
 	SMTP      email.SMTPConfig
 	Redis     redis.RedisConfig
 	Storage   storage.StorageConfig
+	WhatsApp  WhatsAppConfig
 }
 
 var (
@@ -88,6 +94,10 @@ func LoadConfig() {
 			LocalPath: os.Getenv("STORAGE_LOCAL_PATH"),
 			CDNPrefix: os.Getenv("STORAGE_CDN_PREFIX"),
 		},
+		WhatsApp: WhatsAppConfig{
+			BaseURL: getEnvOrDefault("WHATSAPP_BASE_URL", "http://localhost:3000"),
+			Session: getEnvOrDefault("WHATSAPP_SESSION", "default"),
+		},
 	}
 }
 
@@ -98,6 +108,14 @@ func getEnvAsInt(name string, defaultVal int) int {
 	}
 	val, err := strconv.Atoi(valStr)
 	if err != nil {
+		return defaultVal
+	}
+	return val
+}
+
+func getEnvOrDefault(name, defaultVal string) string {
+	val := os.Getenv(name)
+	if val == "" {
 		return defaultVal
 	}
 	return val

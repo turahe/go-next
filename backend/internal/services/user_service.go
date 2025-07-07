@@ -68,7 +68,10 @@ func (s *userService) GetUserByEmail(ctx context.Context, email string) (*models
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, &user, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, &user, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &user, nil
@@ -92,7 +95,10 @@ func (s *userService) GetUserByUsername(ctx context.Context, username string) (*
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, &user, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, &user, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &user, nil
@@ -201,7 +207,10 @@ func (s *userService) GetUserStats(ctx context.Context, userID string) (map[stri
 
 	// Cache the stats
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, stats, redis.ShortTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, stats, redis.ShortTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return stats, nil
@@ -225,7 +234,10 @@ func (s *userService) GetActiveUsers(ctx context.Context) ([]models.User, error)
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, users, redis.ShortTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, users, redis.ShortTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return users, nil
@@ -251,7 +263,10 @@ func (s *userService) GetUsersByRole(ctx context.Context, roleName string) ([]mo
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, users, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, users, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return users, nil
@@ -278,7 +293,10 @@ func (s *userService) SearchUsers(ctx context.Context, query string) ([]models.U
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, users, redis.ShortTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, users, redis.ShortTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return users, nil
@@ -300,7 +318,10 @@ func (s *userService) UpdateLastLogin(ctx context.Context, userID string) error 
 
 	// Invalidate user cache
 	if s.Redis != nil {
-		s.Redis.InvalidateUserCache(ctx, userID)
+		err := s.Redis.InvalidateUserCache(ctx, userID)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -325,7 +346,10 @@ func (s *userService) GetUserCount(ctx context.Context) (int64, error) {
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, count, redis.LongTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, count, redis.LongTTL)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	return count, nil

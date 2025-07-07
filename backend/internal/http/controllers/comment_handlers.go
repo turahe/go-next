@@ -1,13 +1,13 @@
 package controllers
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 
 	"wordpress-go-next/backend/internal/http/requests"
 	"wordpress-go-next/backend/internal/models"
 	"wordpress-go-next/backend/internal/services"
+	"wordpress-go-next/backend/pkg/database"
 
 	"github.com/gin-gonic/gin"
 )
@@ -46,7 +46,7 @@ func NewCommentHandler(commentService services.CommentService) CommentHandler {
 // @Router       /posts/{post_id}/comments [get]
 func (h *commentHandler) GetCommentsByPost(c *gin.Context) {
 	postID := c.Param("post_id")
-	comments, err := h.CommentService.GetCommentsByPost(postID)
+	comments, err := h.CommentService.GetCommentsByPost(c.Request.Context(), postID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
 		return
@@ -65,7 +65,7 @@ func (h *commentHandler) GetCommentsByPost(c *gin.Context) {
 // @Router       /comments/{id} [get]
 func (h *commentHandler) GetComment(c *gin.Context) {
 	id := c.Param("id")
-	comment, err := h.CommentService.GetCommentByID(id)
+	comment, err := h.CommentService.GetCommentByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"})
 		return
@@ -91,14 +91,15 @@ func (h *commentHandler) CreateComment(c *gin.Context) {
 		return
 	}
 	comment := models.Comment{
-		Content: input.Content,
-		UserID:  input.UserID,
-		PostID:  input.PostID,
+		UserID: input.UserID,
+		PostID: input.PostID,
 	}
-	if err := h.CommentService.CreateComment(&comment); err != nil {
+	if err := h.CommentService.CreateComment(c.Request.Context(), &comment, input.Content); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create comment"})
 		return
 	}
+	// Preload Content
+	database.DB.Preload("Content").First(&comment, comment.ID)
 	c.JSON(http.StatusCreated, comment)
 }
 
@@ -117,7 +118,7 @@ func (h *commentHandler) CreateComment(c *gin.Context) {
 // @Router       /comments/{id} [put]
 func (h *commentHandler) UpdateComment(c *gin.Context) {
 	id := c.Param("id")
-	comment, err := h.CommentService.GetCommentByID(id)
+	comment, err := h.CommentService.GetCommentByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"})
 		return
@@ -127,13 +128,13 @@ func (h *commentHandler) UpdateComment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	comment.Content = input.Content
 	comment.UserID = input.UserID
 	comment.PostID = input.PostID
-	if err := h.CommentService.UpdateComment(comment); err != nil {
+	if err := h.CommentService.UpdateComment(c.Request.Context(), comment, input.Content); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update comment"})
 		return
 	}
+	database.DB.Preload("Content").First(comment, comment.ID)
 	c.JSON(http.StatusOK, comment)
 }
 
@@ -147,7 +148,7 @@ func (h *commentHandler) UpdateComment(c *gin.Context) {
 // @Router       /comments/{id} [delete]
 func (h *commentHandler) DeleteComment(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.CommentService.DeleteComment(id); err != nil {
+	if err := h.CommentService.DeleteComment(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete comment"})
 		return
 	}
@@ -172,14 +173,9 @@ func (h *commentHandler) CreateCommentNested(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	var parentID *int64
-	if pid := c.Query("parent_id"); pid != "" {
-		var parsed int64
-		if _, err := fmt.Sscan(pid, &parsed); err == nil {
-			parentID = &parsed
-		}
-	}
-	if err := h.CommentService.CreateNested(&comment, parentID); err != nil {
+	var parentID *uint64
+
+	if err := h.CommentService.CreateNested(c.Request.Context(), &comment, parentID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create comment (nested)"})
 		return
 	}
@@ -204,14 +200,9 @@ func (h *commentHandler) MoveCommentNested(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid comment ID"})
 		return
 	}
-	var parentID *int64
-	if pid := c.Query("parent_id"); pid != "" {
-		var parsed int64
-		if _, err := fmt.Sscan(pid, &parsed); err == nil {
-			parentID = &parsed
-		}
-	}
-	if err := h.CommentService.MoveNested(uint(id), parentID); err != nil {
+	var parentID *uint64
+
+	if err := h.CommentService.MoveNested(c.Request.Context(), id, parentID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move comment (nested)"})
 		return
 	}
@@ -232,7 +223,7 @@ func (h *commentHandler) DeleteCommentNested(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid comment ID"})
 		return
 	}
-	if err := h.CommentService.DeleteNested(uint(id)); err != nil {
+	if err := h.CommentService.DeleteNested(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete comment (nested)"})
 		return
 	}
@@ -254,7 +245,7 @@ func (h *commentHandler) GetSiblingComments(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid comment ID"})
 		return
 	}
-	siblings, err := h.CommentService.GetSiblingComments(uint(id))
+	siblings, err := h.CommentService.GetSiblingComments(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch siblings"})
 		return
@@ -277,7 +268,7 @@ func (h *commentHandler) GetParentComment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid comment ID"})
 		return
 	}
-	parent, err := h.CommentService.GetParentComment(uint(id))
+	parent, err := h.CommentService.GetParentComment(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch parent"})
 		return
@@ -304,7 +295,7 @@ func (h *commentHandler) GetDescendantComments(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid comment ID"})
 		return
 	}
-	descendants, err := h.CommentService.GetDescendantComments(uint(id))
+	descendants, err := h.CommentService.GetDescendantComments(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch descendants"})
 		return
@@ -327,7 +318,7 @@ func (h *commentHandler) GetChildrenComments(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid comment ID"})
 		return
 	}
-	children, err := h.CommentService.GetChildrenComments(uint(id))
+	children, err := h.CommentService.GetChildrenComments(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch children"})
 		return

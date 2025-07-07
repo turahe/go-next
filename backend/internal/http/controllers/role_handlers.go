@@ -26,7 +26,7 @@ func NewRoleHandler(roleService services.RoleService) RoleHandler {
 }
 
 func (h *roleHandler) GetRoles(c *gin.Context) {
-	roles, err := h.RoleService.GetAllRoles()
+	roles, err := h.RoleService.GetAllRoles(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch roles"})
 		return
@@ -36,7 +36,7 @@ func (h *roleHandler) GetRoles(c *gin.Context) {
 
 func (h *roleHandler) GetRole(c *gin.Context) {
 	id := c.Param("id")
-	role, err := h.RoleService.GetRoleByID(id)
+	role, err := h.RoleService.GetRoleByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Role not found"})
 		return
@@ -51,7 +51,7 @@ func (h *roleHandler) CreateRole(c *gin.Context) {
 		return
 	}
 	role := models.Role{Name: input.Name}
-	if err := h.RoleService.CreateRole(&role); err != nil {
+	if err := h.RoleService.CreateRole(c.Request.Context(), &role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create role"})
 		return
 	}
@@ -60,7 +60,7 @@ func (h *roleHandler) CreateRole(c *gin.Context) {
 
 func (h *roleHandler) UpdateRole(c *gin.Context) {
 	id := c.Param("id")
-	role, err := h.RoleService.GetRoleByID(id)
+	role, err := h.RoleService.GetRoleByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Role not found"})
 		return
@@ -71,7 +71,7 @@ func (h *roleHandler) UpdateRole(c *gin.Context) {
 		return
 	}
 	role.Name = input.Name
-	if err := h.RoleService.UpdateRole(role); err != nil {
+	if err := h.RoleService.UpdateRole(c.Request.Context(), role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update role"})
 		return
 	}
@@ -80,7 +80,7 @@ func (h *roleHandler) UpdateRole(c *gin.Context) {
 
 func (h *roleHandler) DeleteRole(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.RoleService.DeleteRole(id); err != nil {
+	if err := h.RoleService.DeleteRole(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete role"})
 		return
 	}

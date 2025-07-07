@@ -13,20 +13,20 @@ import (
 // TagService interface for tag management
 type TagService interface {
 	CreateTag(ctx context.Context, tag *models.Tag) error
-	GetTagByID(ctx context.Context, id uint) (*models.Tag, error)
+	GetTagByID(ctx context.Context, id uint64) (*models.Tag, error)
 	GetTagBySlug(ctx context.Context, slug string) (*models.Tag, error)
 	GetTagByName(ctx context.Context, name string) (*models.Tag, error)
 	UpdateTag(ctx context.Context, tag *models.Tag) error
-	DeleteTag(ctx context.Context, id uint) error
+	DeleteTag(ctx context.Context, id uint64) error
 	GetAllTags(ctx context.Context, tagType string) ([]models.Tag, error)
 	GetActiveTags(ctx context.Context) ([]models.Tag, error)
-	GetTagsByEntity(ctx context.Context, entityID uint, entityType string) ([]models.Tag, error)
-	AddTagToEntity(ctx context.Context, tagID, entityID uint, entityType string) error
-	RemoveTagFromEntity(ctx context.Context, tagID, entityID uint, entityType string) error
-	GetEntitiesByTag(ctx context.Context, tagID uint, entityType string, limit, offset int) ([]map[string]interface{}, int64, error)
+	GetTagsByEntity(ctx context.Context, entityID uint64, entityType string) ([]models.Tag, error)
+	AddTagToEntity(ctx context.Context, tagID, entityID uint64, entityType string) error
+	RemoveTagFromEntity(ctx context.Context, tagID, entityID uint64, entityType string) error
+	GetEntitiesByTag(ctx context.Context, tagID uint64, entityType string, limit, offset int) ([]map[string]interface{}, int64, error)
 	SearchTags(ctx context.Context, query string, limit, offset int) ([]models.Tag, int64, error)
 	GetTagCount(ctx context.Context) (int64, error)
-	InvalidateTagCache(ctx context.Context, tagID uint) error
+	InvalidateTagCache(ctx context.Context, tagID uint64) error
 }
 
 type tagService struct {
@@ -51,7 +51,7 @@ const (
 	tagCountKeyPrefix     = "tag:count:"
 )
 
-func (s *tagService) getTagCacheKey(id uint) string {
+func (s *tagService) getTagCacheKey(id uint64) string {
 	return fmt.Sprintf("%s%d", tagCacheKeyPrefix, id)
 }
 
@@ -74,7 +74,7 @@ func (s *tagService) getTagActiveCacheKey() string {
 	return tagActiveKeyPrefix + "list"
 }
 
-func (s *tagService) getTagEntityCacheKey(entityID uint, entityType string) string {
+func (s *tagService) getTagEntityCacheKey(entityID uint64, entityType string) string {
 	return fmt.Sprintf("%s%d:%s", tagEntityKeyPrefix, entityID, entityType)
 }
 
@@ -102,7 +102,7 @@ func (s *tagService) CreateTag(ctx context.Context, tag *models.Tag) error {
 	return nil
 }
 
-func (s *tagService) GetTagByID(ctx context.Context, id uint) (*models.Tag, error) {
+func (s *tagService) GetTagByID(ctx context.Context, id uint64) (*models.Tag, error) {
 	cacheKey := s.getTagCacheKey(id)
 
 	// Try to get from cache first
@@ -190,7 +190,7 @@ func (s *tagService) UpdateTag(ctx context.Context, tag *models.Tag) error {
 	return nil
 }
 
-func (s *tagService) DeleteTag(ctx context.Context, id uint) error {
+func (s *tagService) DeleteTag(ctx context.Context, id uint64) error {
 	// Get tag first to invalidate related caches
 	var tag models.Tag
 	if err := database.DB.WithContext(ctx).First(&tag, id).Error; err != nil {
@@ -202,7 +202,7 @@ func (s *tagService) DeleteTag(ctx context.Context, id uint) error {
 	}
 
 	// Invalidate caches
-	s.invalidateTagCaches(ctx, tag.ID)
+	s.invalidateTagCaches(ctx, id)
 	s.invalidateRelatedCaches(ctx)
 
 	return nil
@@ -261,7 +261,7 @@ func (s *tagService) GetActiveTags(ctx context.Context) ([]models.Tag, error) {
 	return tags, nil
 }
 
-func (s *tagService) GetTagsByEntity(ctx context.Context, entityID uint, entityType string) ([]models.Tag, error) {
+func (s *tagService) GetTagsByEntity(ctx context.Context, entityID uint64, entityType string) ([]models.Tag, error) {
 	cacheKey := s.getTagEntityCacheKey(entityID, entityType)
 
 	// Try to get from cache first
@@ -293,7 +293,7 @@ func (s *tagService) GetTagsByEntity(ctx context.Context, entityID uint, entityT
 	return tags, nil
 }
 
-func (s *tagService) AddTagToEntity(ctx context.Context, tagID, entityID uint, entityType string) error {
+func (s *tagService) AddTagToEntity(ctx context.Context, tagID, entityID uint64, entityType string) error {
 	taggedEntity := models.TaggedEntity{
 		TagID:      tagID,
 		EntityID:   entityID,
@@ -310,7 +310,7 @@ func (s *tagService) AddTagToEntity(ctx context.Context, tagID, entityID uint, e
 	return nil
 }
 
-func (s *tagService) RemoveTagFromEntity(ctx context.Context, tagID, entityID uint, entityType string) error {
+func (s *tagService) RemoveTagFromEntity(ctx context.Context, tagID, entityID uint64, entityType string) error {
 	if err := database.DB.WithContext(ctx).
 		Where("tag_id = ? AND entity_id = ? AND entity_type = ?", tagID, entityID, entityType).
 		Delete(&models.TaggedEntity{}).Error; err != nil {
@@ -323,7 +323,7 @@ func (s *tagService) RemoveTagFromEntity(ctx context.Context, tagID, entityID ui
 	return nil
 }
 
-func (s *tagService) GetEntitiesByTag(ctx context.Context, tagID uint, entityType string, limit, offset int) ([]map[string]interface{}, int64, error) {
+func (s *tagService) GetEntitiesByTag(ctx context.Context, tagID uint64, entityType string, limit, offset int) ([]map[string]interface{}, int64, error) {
 	var taggedEntities []models.TaggedEntity
 	var total int64
 
@@ -427,7 +427,7 @@ func (s *tagService) GetTagCount(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
-func (s *tagService) InvalidateTagCache(ctx context.Context, tagID uint) error {
+func (s *tagService) InvalidateTagCache(ctx context.Context, tagID uint64) error {
 	s.invalidateTagCaches(ctx, tagID)
 	return nil
 }
@@ -440,7 +440,7 @@ func (s *tagService) cacheTag(ctx context.Context, tag *models.Tag) error {
 	}
 
 	// Cache by ID
-	cacheKey := s.getTagCacheKey(tag.ID)
+	cacheKey := s.getTagCacheKey(uint64(tag.ID))
 	if err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute); err != nil {
 		return err
 	}
@@ -456,7 +456,7 @@ func (s *tagService) cacheTag(ctx context.Context, tag *models.Tag) error {
 	return s.Redis.SetWithTTL(ctx, nameCacheKey, string(data), 30*time.Minute)
 }
 
-func (s *tagService) invalidateTagCaches(ctx context.Context, tagID uint) {
+func (s *tagService) invalidateTagCaches(ctx context.Context, tagID uint64) {
 	cacheKeys := []string{
 		s.getTagCacheKey(tagID),
 	}

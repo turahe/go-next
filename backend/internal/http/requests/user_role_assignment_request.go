@@ -1,5 +1,5 @@
 package requests
 
-type UserRoleAssignmentInput struct {
-	RoleID uint `json:"role_id" binding:"required"`
+type UserRoleAssignmentRequest struct {
+	RoleID uint64 `json:"role_id" binding:"required"`
 }

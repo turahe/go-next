@@ -11,7 +11,6 @@ import (
 type Post struct {
 	BaseWithUser
 	Title      string `gorm:"not null;size:255;index" json:"title" validate:"required,min=3,max=255"`
-	Content    string `gorm:"type:text;not null" json:"content" validate:"required,min=10"`
 	Slug       string `gorm:"uniqueIndex;not null;size:255" json:"slug"`
 	Excerpt    string `gorm:"size:500" json:"excerpt,omitempty"`
 	Status     string `gorm:"default:'draft';index;size:20" json:"status" validate:"oneof=draft published archived"`
@@ -46,7 +45,7 @@ func (p *Post) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	// Generate excerpt if not provided
-	if p.Excerpt == "" && len(p.Content) > 0 {
+	if p.Excerpt == "" && len(p.Contents) > 0 {
 		p.Excerpt = p.generateExcerpt()
 	}
 
@@ -65,7 +64,7 @@ func (p *Post) BeforeUpdate(tx *gorm.DB) error {
 	}
 
 	// Generate excerpt if not provided
-	if p.Excerpt == "" && len(p.Content) > 0 {
+	if p.Excerpt == "" && len(p.Contents) > 0 {
 		p.Excerpt = p.generateExcerpt()
 	}
 
@@ -76,10 +75,6 @@ func (p *Post) BeforeUpdate(tx *gorm.DB) error {
 func (p *Post) validate() error {
 	if len(p.Title) < 3 || len(p.Title) > 255 {
 		return errors.New("title must be between 3 and 255 characters")
-	}
-
-	if len(p.Content) < 10 {
-		return errors.New("content must be at least 10 characters")
 	}
 
 	if p.CategoryID == 0 {
@@ -113,12 +108,15 @@ func (p *Post) generateSlug() string {
 
 // generateExcerpt creates a short excerpt from the content
 func (p *Post) generateExcerpt() string {
-	if len(p.Content) <= 150 {
-		return p.Content
+	if len(p.Contents) == 0 {
+		return ""
+	}
+	mainContent := p.Contents[0].Content
+	if len(mainContent) <= 150 {
+		return mainContent
 	}
 
-	// Find the first sentence or cut at 150 characters
-	excerpt := p.Content[:150]
+	excerpt := mainContent[:150]
 	if idx := strings.LastIndex(excerpt, "."); idx > 100 {
 		excerpt = excerpt[:idx+1]
 	} else if idx := strings.LastIndex(excerpt, " "); idx > 100 {

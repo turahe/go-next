@@ -1,362 +1,383 @@
 package controllers
 
 import (
+	"net/http"
+	"os"
+	"time"
 	"wordpress-go-next/backend/internal/http/requests"
 	"wordpress-go-next/backend/internal/http/responses"
 	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/rules"
-	"wordpress-go-next/backend/pkg/database"
-	"wordpress-go-next/backend/pkg/utils"
+	"wordpress-go-next/backend/internal/services"
+	"wordpress-go-next/backend/pkg/config"
+	"wordpress-go-next/backend/pkg/email"
+	"wordpress-go-next/backend/pkg/whatsapp"
 
-	"time"
-
-	"net/http"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
-type AuthHandler interface {
-	Register(c *gin.Context)
-	Login(c *gin.Context)
-	RequestEmailVerification(c *gin.Context)
-	VerifyEmail(c *gin.Context)
-	RequestPhoneVerification(c *gin.Context)
-	VerifyPhone(c *gin.Context)
-	RequestPasswordReset(c *gin.Context)
-	ResetPassword(c *gin.Context)
-	RefreshToken(c *gin.Context)
+type AuthHandler struct {
+	AuthService services.AuthService
 }
 
-type authHandler struct{}
-
-func NewAuthHandler() AuthHandler {
-	return &authHandler{}
+func NewAuthHandler(authService services.AuthService) *AuthHandler {
+	return &AuthHandler{AuthService: authService}
 }
 
-// Use shared validator instance from a common package if available
-
-type AuthResponse struct {
-	Token        string `json:"token"`
-	RefreshToken string `json:"refresh_token"`
-}
-
-func (h *authHandler) Register(c *gin.Context) {
+// Register user (real implementation)
+func (h *AuthHandler) Register(c *gin.Context) {
 	var req requests.AuthRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Invalid request"})
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid request",
+		})
 		return
 	}
-	if err := rules.Validate.Struct(req); err != nil {
-		c.JSON(400, requests.FormatValidationError(err))
+	// Check if user already exists
+	if user, _ := services.UserSvc.GetUserByUsername(c.Request.Context(), req.Username); user != nil {
+		c.JSON(http.StatusConflict, responses.CommonResponse{
+			ResponseCode:    http.StatusConflict,
+			ResponseMessage: "Username already exists",
+		})
 		return
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if user, _ := services.UserSvc.GetUserByEmail(c.Request.Context(), req.Email); user != nil {
+		c.JSON(http.StatusConflict, responses.CommonResponse{
+			ResponseCode:    http.StatusConflict,
+			ResponseMessage: "Email already exists",
+		})
+		return
+	}
+	// Hash password
+	hash, err := h.AuthService.HashPassword(req.Password)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Error hashing password"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to hash password",
+		})
 		return
 	}
-	var count int64
-	if err := database.DB.Model(&models.User{}).Where("username = ?", req.Username).Or("email = ?", req.Email).Count(&count).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Database error"})
+	user := &models.User{
+		Username:     req.Username,
+		Email:        req.Email,
+		PasswordHash: hash,
+		IsActive:     true,
+	}
+	if err := services.UserSvc.CreateUser(c.Request.Context(), user); err != nil {
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to create user",
+		})
 		return
 	}
-	if count > 0 {
-		var user models.User
-		if err := database.DB.Where("username = ?", req.Username).First(&user).Error; err == nil {
-			c.JSON(400, gin.H{"error": "Username already taken"})
-			return
+	// Assign role if provided
+	if req.Role != "" {
+		role, err := services.RoleSvc.GetRoleByName(c.Request.Context(), req.Role)
+		if err == nil && role != nil {
+			_ = services.UserRoleSvc.AssignRoleToUser(c.Request.Context(), user, role)
 		}
-		if err := database.DB.Where("email = ?", req.Email).First(&user).Error; err == nil {
-			c.JSON(400, gin.H{"error": "Email already registered"})
-			return
-		}
-		c.JSON(400, gin.H{"error": "User already exists"})
-		return
 	}
-	var clientKey, secretKey string
-	if err := database.DB.Transaction(func(tx *gorm.DB) error {
-		roleName := req.Role
-		if roleName == "" {
-			roleName = "user"
+	// Send email verification
+	verificationToken, err := h.AuthService.CreateVerificationToken(c.Request.Context(), user.ID, "email")
+	if err == nil && verificationToken != "" {
+		cfg := config.GetConfig()
+		emailSvc := email.NewEmailService(cfg.SMTP)
+		verifyBaseURL := os.Getenv("EMAIL_BASE_URL")
+		if verifyBaseURL == "" {
+			verifyBaseURL = "http://localhost:8080" // fallback for dev
 		}
-		var role models.Role
-		if err := tx.Where("name = ?", roleName).First(&role).Error; err != nil {
-			c.JSON(400, gin.H{"error": "Invalid or missing role"})
-			return err
+		verifyURL := fmt.Sprintf("%s/verify-email?token=%s", verifyBaseURL, verificationToken)
+		body := email.EmailVerificationTemplate(user.Username, verifyURL)
+		_ = emailSvc.SendEmail(user.Email, "Verify your email", body)
+	}
+	// Send phone verification if phone is provided
+	phoneVerificationSent := false
+	if user.Phone != nil && *user.Phone != "" {
+		phoneToken, err := h.AuthService.CreateVerificationToken(c.Request.Context(), user.ID, "phone")
+		if err == nil && phoneToken != "" {
+			chatId := *user.Phone + "@c.us"
+			waCfg := config.GetConfig().WhatsApp
+			wa := whatsapp.NewWhatsAppService(waCfg.BaseURL, waCfg.Session)
+			_ = wa.StartTyping(chatId)
+			err = wa.SendText(chatId, fmt.Sprintf("Your verification code is: %s", phoneToken), nil, false, false)
+			_ = wa.StopTyping(chatId)
+
+			if err == nil {
+				phoneVerificationSent = true
+			}
 		}
-		user := models.User{
-			Username:     req.Username,
-			Email:        req.Email,
-			PasswordHash: string(hash),
-			Roles:        []models.Role{role},
-		}
-		if err := tx.Create(&user).Error; err != nil {
-			c.JSON(400, gin.H{"error": "User already exists or DB error"})
-			return err
-		}
-		var err error
-		clientKey, err = utils.GenerateRandomKey(16)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "Failed to generate client key"})
-			return err
-		}
-		secretKey, err = utils.GenerateRandomKey(32)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "Failed to generate secret key"})
-			return err
-		}
-		jwtKey := models.JWTKey{
-			UserID:          user.ID,
-			ClientKey:       clientKey,
-			SecretKey:       secretKey,
-			TokenExpiration: 3600, // default 1 hour
-		}
-		if err := tx.Create(&jwtKey).Error; err != nil {
-			c.JSON(500, gin.H{"error": "Failed to store JWT key"})
-			return err
-		}
-		return nil
-	}); err != nil {
+	}
+	// Generate JWT and refresh token
+	accessToken, refreshToken, err := h.AuthService.GenerateTokens(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to generate tokens",
+		})
 		return
 	}
 	c.JSON(http.StatusCreated, responses.CommonResponse{
 		ResponseCode:    http.StatusCreated,
-		ResponseMessage: "Registration successful",
-		Data:            gin.H{"client_key": clientKey, "secret_key": secretKey},
+		ResponseMessage: "Registration successful. Please verify your email and phone.",
+		Data: map[string]interface{}{
+			"access_token":            accessToken,
+			"refresh_token":           refreshToken,
+			"expires_in":              time.Now().Add(15 * time.Minute).Unix(),
+			"email_verification_sent": true,
+			"phone_verification_sent": phoneVerificationSent,
+		},
 	})
 }
 
-func (h *authHandler) Login(c *gin.Context) {
-	var req requests.AuthRequest
+// Login and issue JWT + refresh token
+func (h *AuthHandler) Login(c *gin.Context) {
+	var req requests.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Invalid request"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	if err := rules.Validate.StructPartial(req, "Email", "Password"); err != nil {
-		c.JSON(400, requests.FormatValidationError(err))
-		return
-	}
-	var user models.User
-	if err := database.DB.Where("email = ?", req.Email).First(&user).Error; err != nil {
-		c.JSON(401, gin.H{"error": "Invalid credentials"})
-		return
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		c.JSON(401, gin.H{"error": "Invalid credentials"})
-		return
-	}
-	token, err := utils.GenerateJWT(user.ID)
+	user, err := h.AuthService.AuthenticateUser(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to generate token"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
-	refreshToken, err := utils.GenerateRandomKey(32)
+	// Generate JWT and refresh token
+	accessToken, refreshToken, err := h.AuthService.GenerateTokens(user)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to generate refresh token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
-	// Store refresh token in Token table
-	tokenModel := models.Token{
-		Token:        token,
-		UserID:       user.ID,
-		ClientSecret: "", // Not used for refresh, can be set if needed
-		RefreshToken: refreshToken,
-		ExpiredAt:    time.Now().Add(7 * 24 * time.Hour), // Refresh token valid for 7 days
-	}
-	if err := database.DB.Create(&tokenModel).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Failed to store refresh token"})
-		return
-	}
-	c.JSON(http.StatusOK, AuthResponse{Token: token, RefreshToken: refreshToken})
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"expires_in":    time.Now().Add(15 * time.Minute).Unix(),
+	})
 }
 
-// RefreshToken endpoint
-func (h *authHandler) RefreshToken(c *gin.Context) {
+// Request password reset (stub)
+func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"message": "RequestPasswordReset not implemented"})
+}
+
+// Reset password (stub)
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"message": "ResetPassword not implemented"})
+}
+
+// Refresh JWT using refresh token
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	var req struct {
-		RefreshToken string `json:"refresh_token" binding:"required"`
+		RefreshToken string `json:"refresh_token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Invalid request"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	var tokenModel models.Token
-	if err := database.DB.Where("refresh_token = ? AND expired_at > ?", req.RefreshToken, time.Now()).First(&tokenModel).Error; err != nil {
-		c.JSON(401, gin.H{"error": "Invalid or expired refresh token"})
-		return
-	}
-	// Issue new access token
-	token, err := utils.GenerateJWT(tokenModel.UserID)
+	accessToken, refreshToken, err := h.AuthService.RefreshTokens(req.RefreshToken)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to generate token"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
 		return
 	}
-	// Optionally, rotate refresh token
-	newRefreshToken, err := utils.GenerateRandomKey(32)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to generate refresh token"})
-		return
-	}
-	tokenModel.RefreshToken = newRefreshToken
-	tokenModel.ExpiredAt = time.Now().Add(7 * 24 * time.Hour)
-	if err := database.DB.Save(&tokenModel).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Failed to update refresh token"})
-		return
-	}
-	c.JSON(200, AuthResponse{Token: token, RefreshToken: newRefreshToken})
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"expires_in":    time.Now().Add(15 * time.Minute).Unix(),
+	})
 }
 
-func (h *authHandler) RequestEmailVerification(c *gin.Context) {
-	id := c.Param("id")
-	var user models.User
-	if err := database.DB.First(&user, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+// Email/phone verification stubs
+func (h *AuthHandler) RequestEmailVerification(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, responses.CommonResponse{
+			ResponseCode:    http.StatusUnauthorized,
+			ResponseMessage: "Unauthorized",
+		})
 		return
 	}
-	token, err := utils.GenerateRandomKey(32)
+	user, err := services.UserSvc.GetUserByID(c.Request.Context(), fmt.Sprintf("%v", userID))
+	if err != nil || user == nil || user.Email == "" {
+		c.JSON(http.StatusNotFound, responses.CommonResponse{
+			ResponseCode:    http.StatusNotFound,
+			ResponseMessage: "User or email not found",
+		})
+		return
+	}
+	// Rate limiting: 5 per minute per user
+	rlKey := fmt.Sprintf("email_verify_rl:%v", userID)
+	rateLimited, _ := h.AuthService.IsRateLimited(c.Request.Context(), rlKey, 5, time.Minute)
+	if rateLimited {
+		c.JSON(http.StatusTooManyRequests, responses.CommonResponse{
+			ResponseCode:    http.StatusTooManyRequests,
+			ResponseMessage: "Too many requests. Please wait before requesting another code.",
+		})
+		return
+	}
+	// Create verification token
+	token, err := h.AuthService.CreateVerificationToken(c.Request.Context(), user.ID, "email")
+	if err != nil || token == "" {
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to create email verification token",
+		})
+		return
+	}
+	cfg := config.GetConfig()
+	emailSvc := email.NewEmailService(cfg.SMTP)
+	verifyBaseURL := os.Getenv("EMAIL_BASE_URL")
+	if verifyBaseURL == "" {
+		verifyBaseURL = "http://localhost:8080" // fallback for dev
+	}
+	verifyURL := fmt.Sprintf("%s/verify-email?token=%s", verifyBaseURL, token)
+	body := email.EmailVerificationTemplate(user.Username, verifyURL)
+	err = emailSvc.SendEmail(user.Email, "Verify your email", body)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to generate token"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to send verification email",
+		})
 		return
 	}
-	t := models.VerificationToken{
-		UserID:    user.ID,
-		Token:     token,
-		Type:      "email_verification",
-		ExpiresAt: time.Now().Add(30 * time.Minute),
-	}
-	database.DB.Create(&t)
-	c.JSON(http.StatusOK, gin.H{"message": "Verification email sent", "token": token})
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Verification email sent",
+	})
 }
 
-func (h *authHandler) VerifyEmail(c *gin.Context) {
-	id := c.Param("id")
-	var input struct {
+func (h *AuthHandler) VerifyEmail(c *gin.Context) {
+	var req struct {
 		Token string `json:"token"`
 	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	if err := c.ShouldBindJSON(&req); err != nil || req.Token == "" {
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Token required",
+		})
 		return
 	}
-	var vt models.VerificationToken
-	if err := database.DB.Where("user_id = ? AND token = ? AND type = ? AND used = ? AND expires_at > ?", id, input.Token, "email_verification", false, time.Now()).First(&vt).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
+	vt, err := h.AuthService.ValidateVerificationToken(c.Request.Context(), req.Token, "email")
+	if err != nil || vt == nil {
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid or expired token",
+		})
 		return
 	}
-	var user models.User
-	if err := database.DB.First(&user, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+	user, err := services.UserSvc.GetUserByID(c.Request.Context(), fmt.Sprintf("%d", vt.UserID))
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, responses.CommonResponse{
+			ResponseCode:    http.StatusNotFound,
+			ResponseMessage: "User not found",
+		})
 		return
 	}
-	now := time.Now()
-	user.EmailVerified = &now
-	vt.Used = true
-	database.DB.Save(&user)
-	database.DB.Save(&vt)
-	c.JSON(http.StatusOK, gin.H{"message": "Email verified"})
-}
-
-func (h *authHandler) RequestPhoneVerification(c *gin.Context) {
-	id := c.Param("id")
-	var user models.User
-	if err := database.DB.First(&user, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
-	token, err := utils.GenerateRandomKey(32)
+	err = h.AuthService.MarkEmailVerified(c.Request.Context(), user)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to generate token"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to mark email verified",
+		})
 		return
 	}
-	t := models.VerificationToken{
-		UserID:    user.ID,
-		Token:     token,
-		Type:      "phone_verification",
-		ExpiresAt: time.Now().Add(30 * time.Minute),
-	}
-	database.DB.Create(&t)
-	c.JSON(http.StatusOK, gin.H{"message": "Verification SMS sent", "token": token})
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Email verified successfully",
+	})
 }
 
-func (h *authHandler) VerifyPhone(c *gin.Context) {
-	id := c.Param("id")
-	var input struct {
+func (h *AuthHandler) RequestPhoneVerification(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, responses.CommonResponse{
+			ResponseCode:    http.StatusUnauthorized,
+			ResponseMessage: "Unauthorized",
+		})
+		return
+	}
+	user, err := services.UserSvc.GetUserByID(c.Request.Context(), fmt.Sprintf("%v", userID))
+	if err != nil || user == nil || user.Phone == nil || *user.Phone == "" {
+		c.JSON(http.StatusNotFound, responses.CommonResponse{
+			ResponseCode:    http.StatusNotFound,
+			ResponseMessage: "User or phone not found",
+		})
+		return
+	}
+	// Rate limiting: 5 per minute per user
+	rlKey := fmt.Sprintf("phone_verify_rl:%v", userID)
+	rateLimited, _ := h.AuthService.IsRateLimited(c.Request.Context(), rlKey, 5, time.Minute)
+	if rateLimited {
+		c.JSON(http.StatusTooManyRequests, responses.CommonResponse{
+			ResponseCode:    http.StatusTooManyRequests,
+			ResponseMessage: "Too many requests. Please wait before requesting another code.",
+		})
+		return
+	}
+	phoneToken, err := h.AuthService.CreateVerificationToken(c.Request.Context(), user.ID, "phone")
+	if err != nil || phoneToken == "" {
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to create phone verification token",
+		})
+		return
+	}
+	chatId := *user.Phone + "@c.us"
+	waCfg := config.GetConfig().WhatsApp
+	wa := whatsapp.NewWhatsAppService(waCfg.BaseURL, waCfg.Session)
+	_ = wa.StartTyping(chatId)
+	err = wa.SendText(chatId, fmt.Sprintf("Your verification code is: %s", phoneToken), nil, false, false)
+	_ = wa.StopTyping(chatId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to send phone verification code",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Phone verification code sent",
+	})
+}
+
+func (h *AuthHandler) VerifyPhone(c *gin.Context) {
+	var req struct {
 		Token string `json:"token"`
 	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	if err := c.ShouldBindJSON(&req); err != nil || req.Token == "" {
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Token required",
+		})
 		return
 	}
-	var vt models.VerificationToken
-	if err := database.DB.Where("user_id = ? AND token = ? AND type = ? AND used = ? AND expires_at > ?", id, input.Token, "phone_verification", false, time.Now()).First(&vt).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
+	vt, err := h.AuthService.ValidateVerificationToken(c.Request.Context(), req.Token, "phone")
+	if err != nil || vt == nil {
+		c.JSON(http.StatusBadRequest, responses.CommonResponse{
+			ResponseCode:    http.StatusBadRequest,
+			ResponseMessage: "Invalid or expired token",
+		})
 		return
 	}
-	var user models.User
-	if err := database.DB.First(&user, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+	user, err := services.UserSvc.GetUserByID(c.Request.Context(), fmt.Sprintf("%d", vt.UserID))
+	if err != nil || user == nil {
+		c.JSON(http.StatusNotFound, responses.CommonResponse{
+			ResponseCode:    http.StatusNotFound,
+			ResponseMessage: "User not found",
+		})
 		return
 	}
-	now := time.Now()
-	user.PhoneVerified = &now
-	vt.Used = true
-	database.DB.Save(&user)
-	database.DB.Save(&vt)
-	c.JSON(http.StatusOK, gin.H{"message": "Phone verified"})
-}
-
-func (h *authHandler) RequestPasswordReset(c *gin.Context) {
-	var input struct {
-		Email string `json:"email"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		return
-	}
-	var user models.User
-	if err := database.DB.Where("email = ?", input.Email).First(&user).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
-	token, err := utils.GenerateRandomKey(32)
+	err = h.AuthService.MarkPhoneVerified(c.Request.Context(), user)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to generate token"})
+		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
+			ResponseCode:    http.StatusInternalServerError,
+			ResponseMessage: "Failed to mark phone verified",
+		})
 		return
 	}
-	t := models.VerificationToken{
-		UserID:    user.ID,
-		Token:     token,
-		Type:      "password_reset",
-		ExpiresAt: time.Now().Add(30 * time.Minute),
-	}
-	database.DB.Create(&t)
-	c.JSON(http.StatusOK, gin.H{"message": "Password reset link sent", "token": token})
-}
-
-func (h *authHandler) ResetPassword(c *gin.Context) {
-	var input struct {
-		UserID      uint   `json:"user_id"`
-		Token       string `json:"token"`
-		NewPassword string `json:"new_password"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		return
-	}
-	var vt models.VerificationToken
-	if err := database.DB.Where("user_id = ? AND token = ? AND type = ? AND used = ? AND expires_at > ?", input.UserID, input.Token, "password_reset", false, time.Now()).First(&vt).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
-		return
-	}
-	var user models.User
-	if err := database.DB.First(&user, input.UserID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
-	user.PasswordHash = string(hash)
-	vt.Used = true
-	database.DB.Save(&user)
-	database.DB.Save(&vt)
-	c.JSON(http.StatusOK, gin.H{"message": "Password reset"})
+	c.JSON(http.StatusOK, responses.CommonResponse{
+		ResponseCode:    http.StatusOK,
+		ResponseMessage: "Phone verified successfully",
+	})
 }

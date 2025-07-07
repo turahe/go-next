@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"strconv"
 	"wordpress-go-next/backend/internal/http/requests"
-	"wordpress-go-next/backend/internal/http/responses"
+	"wordpress-go-next/backend/internal/models"
 	"wordpress-go-next/backend/internal/services"
+	"wordpress-go-next/backend/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,11 +14,11 @@ import (
 // TagHandler handles tag-related HTTP requests
 type TagHandler struct {
 	tagService services.TagService
-	logger     *services.ServiceLogger
+	logger     *logger.ServiceLogger
 }
 
 // NewTagHandler creates a new tag handler
-func NewTagHandler(tagService services.TagService, logger *services.ServiceLogger) *TagHandler {
+func NewTagHandler(tagService services.TagService, logger *logger.ServiceLogger) *TagHandler {
 	return &TagHandler{
 		tagService: tagService,
 		logger:     logger,
@@ -38,17 +39,17 @@ func NewTagHandler(tagService services.TagService, logger *services.ServiceLogge
 func (h *TagHandler) CreateTag(c *gin.Context) {
 	var req requests.CreateTagRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Error(c.Request.Context(), "CreateTag", "Failed to bind request", err)
+		h.logger.Error("CreateTag", "Failed to bind request", err)
 		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
 		return
 	}
 
 	// Validate request
 	if err := req.Validate(); err != nil {
-		h.logger.Error(c.Request.Context(), "CreateTag", "Validation failed", err)
-		c.JSON(http.StatusBadRequest, responses.Response{
-			Success: false,
-			Message: err.Error(),
+		h.logger.Error("CreateTag", "Validation failed", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
 		})
 		return
 	}
@@ -58,25 +59,25 @@ func (h *TagHandler) CreateTag(c *gin.Context) {
 
 	// Create tag
 	if err := h.tagService.CreateTag(c.Request.Context(), tag); err != nil {
-		h.logger.Error(c.Request.Context(), "CreateTag", "Failed to create tag", err, map[string]interface{}{
+		h.logger.Error("CreateTag", "Failed to create tag", err, map[string]interface{}{
 			"tag_name": tag.Name,
 		})
-		c.JSON(http.StatusInternalServerError, responses.Response{
-			Success: false,
-			Message: "Failed to create tag",
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create tag",
 		})
 		return
 	}
 
-	h.logger.Info(c.Request.Context(), "CreateTag", "Tag created successfully", map[string]interface{}{
+	h.logger.Info("CreateTag", "Tag created successfully", map[string]interface{}{
 		"tag_id":   tag.ID,
 		"tag_name": tag.Name,
 	})
 
-	c.JSON(http.StatusCreated, responses.Response{
-		Success: true,
-		Message: "Tag created successfully",
-		Data:    tag,
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"message": "Tag created successfully",
+		"data":    tag,
 	})
 }
 
@@ -94,31 +95,31 @@ func (h *TagHandler) GetTagByID(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "GetTagByID", "Invalid tag ID", err, map[string]interface{}{
+		h.logger.Error("GetTagByID", "Invalid tag ID", err, map[string]interface{}{
 			"tag_id": idStr,
 		})
-		c.JSON(http.StatusBadRequest, responses.Response{
-			Success: false,
-			Message: "Invalid tag ID",
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid tag ID",
 		})
 		return
 	}
 
-	tag, err := h.tagService.GetTagByID(c.Request.Context(), uint(id))
+	tag, err := h.tagService.GetTagByID(c.Request.Context(), uint64(id))
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "GetTagByID", "Failed to get tag", err, map[string]interface{}{
+		h.logger.Error("GetTagByID", "Failed to get tag", err, map[string]interface{}{
 			"tag_id": id,
 		})
-		c.JSON(http.StatusNotFound, responses.Response{
-			Success: false,
-			Message: "Tag not found",
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Tag not found",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, responses.Response{
-		Success: true,
-		Data:    tag,
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    tag,
 	})
 }
 
@@ -137,19 +138,19 @@ func (h *TagHandler) GetTagBySlug(c *gin.Context) {
 
 	tag, err := h.tagService.GetTagBySlug(c.Request.Context(), slug)
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "GetTagBySlug", "Failed to get tag", err, map[string]interface{}{
+		h.logger.Error("GetTagBySlug", "Failed to get tag", err, map[string]interface{}{
 			"slug": slug,
 		})
-		c.JSON(http.StatusNotFound, responses.Response{
-			Success: false,
-			Message: "Tag not found",
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Tag not found",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, responses.Response{
-		Success: true,
-		Data:    tag,
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    tag,
 	})
 }
 
@@ -170,70 +171,70 @@ func (h *TagHandler) UpdateTag(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "UpdateTag", "Invalid tag ID", err, map[string]interface{}{
+		h.logger.Error("UpdateTag", "Invalid tag ID", err, map[string]interface{}{
 			"tag_id": idStr,
 		})
-		c.JSON(http.StatusBadRequest, responses.Response{
-			Success: false,
-			Message: "Invalid tag ID",
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid tag ID",
 		})
 		return
 	}
 
 	var req requests.UpdateTagRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Error(c.Request.Context(), "UpdateTag", "Failed to bind request", err)
+		h.logger.Error("UpdateTag", "Failed to bind request", err)
 		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
 		return
 	}
 
 	// Validate request
 	if err := req.Validate(); err != nil {
-		h.logger.Error(c.Request.Context(), "UpdateTag", "Validation failed", err)
-		c.JSON(http.StatusBadRequest, responses.Response{
-			Success: false,
-			Message: err.Error(),
+		h.logger.Error("UpdateTag", "Validation failed", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
 		})
 		return
 	}
 
 	// Get existing tag
-	existingTag, err := h.tagService.GetTagByID(c.Request.Context(), uint(id))
+	_, err = h.tagService.GetTagByID(c.Request.Context(), uint64(id))
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "UpdateTag", "Tag not found", err, map[string]interface{}{
+		h.logger.Error("UpdateTag", "Tag not found", err, map[string]interface{}{
 			"tag_id": id,
 		})
-		c.JSON(http.StatusNotFound, responses.Response{
-			Success: false,
-			Message: "Tag not found",
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Tag not found",
 		})
 		return
 	}
 
 	// Update tag fields
 	updatedTag := req.ToTag()
-	updatedTag.ID = uint(id)
+	updatedTag.ID = uint64(id)
 
 	// Update tag
 	if err := h.tagService.UpdateTag(c.Request.Context(), updatedTag); err != nil {
-		h.logger.Error(c.Request.Context(), "UpdateTag", "Failed to update tag", err, map[string]interface{}{
+		h.logger.Error("UpdateTag", "Failed to update tag", err, map[string]interface{}{
 			"tag_id": id,
 		})
-		c.JSON(http.StatusInternalServerError, responses.Response{
-			Success: false,
-			Message: "Failed to update tag",
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to update tag",
 		})
 		return
 	}
 
-	h.logger.Info(c.Request.Context(), "UpdateTag", "Tag updated successfully", map[string]interface{}{
+	h.logger.Info("UpdateTag", "Tag updated successfully", map[string]interface{}{
 		"tag_id": id,
 	})
 
-	c.JSON(http.StatusOK, responses.Response{
-		Success: true,
-		Message: "Tag updated successfully",
-		Data:    updatedTag,
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Tag updated successfully",
+		"data":    updatedTag,
 	})
 }
 
@@ -252,34 +253,34 @@ func (h *TagHandler) DeleteTag(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "DeleteTag", "Invalid tag ID", err, map[string]interface{}{
+		h.logger.Error("DeleteTag", "Invalid tag ID", err, map[string]interface{}{
 			"tag_id": idStr,
 		})
-		c.JSON(http.StatusBadRequest, responses.Response{
-			Success: false,
-			Message: "Invalid tag ID",
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid tag ID",
 		})
 		return
 	}
 
-	if err := h.tagService.DeleteTag(c.Request.Context(), uint(id)); err != nil {
-		h.logger.Error(c.Request.Context(), "DeleteTag", "Failed to delete tag", err, map[string]interface{}{
+	if err := h.tagService.DeleteTag(c.Request.Context(), uint64(id)); err != nil {
+		h.logger.Error("DeleteTag", "Failed to delete tag", err, map[string]interface{}{
 			"tag_id": id,
 		})
-		c.JSON(http.StatusInternalServerError, responses.Response{
-			Success: false,
-			Message: "Failed to delete tag",
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to delete tag",
 		})
 		return
 	}
 
-	h.logger.Info(c.Request.Context(), "DeleteTag", "Tag deleted successfully", map[string]interface{}{
+	h.logger.Info("DeleteTag", "Tag deleted successfully", map[string]interface{}{
 		"tag_id": id,
 	})
 
-	c.JSON(http.StatusOK, responses.Response{
-		Success: true,
-		Message: "Tag deleted successfully",
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Tag deleted successfully",
 	})
 }
 
@@ -298,7 +299,7 @@ func (h *TagHandler) DeleteTag(c *gin.Context) {
 func (h *TagHandler) ListTags(c *gin.Context) {
 	var req requests.TagListRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		h.logger.Error(c.Request.Context(), "ListTags", "Failed to bind query", err)
+		h.logger.Error("ListTags", "Failed to bind query", err)
 		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
 		return
 	}
@@ -308,7 +309,7 @@ func (h *TagHandler) ListTags(c *gin.Context) {
 		req.Limit = 10
 	}
 
-	var tags []services.Tag
+	var tags []models.Tag
 	var err error
 
 	if req.Active != nil && *req.Active {
@@ -318,10 +319,10 @@ func (h *TagHandler) ListTags(c *gin.Context) {
 	}
 
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "ListTags", "Failed to get tags", err)
-		c.JSON(http.StatusInternalServerError, responses.Response{
-			Success: false,
-			Message: "Failed to get tags",
+		h.logger.Error("ListTags", "Failed to get tags", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to get tags",
 		})
 		return
 	}
@@ -338,10 +339,10 @@ func (h *TagHandler) ListTags(c *gin.Context) {
 
 	paginatedTags := tags[start:end]
 
-	c.JSON(http.StatusOK, responses.Response{
-		Success: true,
-		Data:    paginatedTags,
-		Meta: map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    paginatedTags,
+		"meta": map[string]interface{}{
 			"total":  len(tags),
 			"limit":  req.Limit,
 			"offset": req.Offset,
@@ -365,7 +366,7 @@ func (h *TagHandler) ListTags(c *gin.Context) {
 func (h *TagHandler) SearchTags(c *gin.Context) {
 	var req requests.TagSearchRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		h.logger.Error(c.Request.Context(), "SearchTags", "Failed to bind query", err)
+		h.logger.Error("SearchTags", "Failed to bind query", err)
 		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
 		return
 	}
@@ -377,20 +378,20 @@ func (h *TagHandler) SearchTags(c *gin.Context) {
 
 	tags, total, err := h.tagService.SearchTags(c.Request.Context(), req.Query, req.Limit, req.Offset)
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "SearchTags", "Failed to search tags", err, map[string]interface{}{
+		h.logger.Error("SearchTags", "Failed to search tags", err, map[string]interface{}{
 			"query": req.Query,
 		})
-		c.JSON(http.StatusInternalServerError, responses.Response{
-			Success: false,
-			Message: "Failed to search tags",
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to search tags",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, responses.Response{
-		Success: true,
-		Data:    tags,
-		Meta: map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    tags,
+		"meta": map[string]interface{}{
 			"total":  total,
 			"limit":  req.Limit,
 			"offset": req.Offset,
@@ -413,33 +414,33 @@ func (h *TagHandler) SearchTags(c *gin.Context) {
 func (h *TagHandler) AddTagToEntity(c *gin.Context) {
 	var req requests.AddTagToEntityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Error(c.Request.Context(), "AddTagToEntity", "Failed to bind request", err)
+		h.logger.Error("AddTagToEntity", "Failed to bind request", err)
 		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
 		return
 	}
 
 	if err := h.tagService.AddTagToEntity(c.Request.Context(), req.TagID, req.EntityID, req.EntityType); err != nil {
-		h.logger.Error(c.Request.Context(), "AddTagToEntity", "Failed to add tag to entity", err, map[string]interface{}{
+		h.logger.Error("AddTagToEntity", "Failed to add tag to entity", err, map[string]interface{}{
 			"tag_id":      req.TagID,
 			"entity_id":   req.EntityID,
 			"entity_type": req.EntityType,
 		})
-		c.JSON(http.StatusInternalServerError, responses.Response{
-			Success: false,
-			Message: "Failed to add tag to entity",
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to add tag to entity",
 		})
 		return
 	}
 
-	h.logger.Info(c.Request.Context(), "AddTagToEntity", "Tag added to entity successfully", map[string]interface{}{
+	h.logger.Info("AddTagToEntity", "Tag added to entity successfully", map[string]interface{}{
 		"tag_id":      req.TagID,
 		"entity_id":   req.EntityID,
 		"entity_type": req.EntityType,
 	})
 
-	c.JSON(http.StatusOK, responses.Response{
-		Success: true,
-		Message: "Tag added to entity successfully",
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Tag added to entity successfully",
 	})
 }
 
@@ -457,33 +458,33 @@ func (h *TagHandler) AddTagToEntity(c *gin.Context) {
 func (h *TagHandler) RemoveTagFromEntity(c *gin.Context) {
 	var req requests.RemoveTagFromEntityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Error(c.Request.Context(), "RemoveTagFromEntity", "Failed to bind request", err)
+		h.logger.Error("RemoveTagFromEntity", "Failed to bind request", err)
 		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
 		return
 	}
 
 	if err := h.tagService.RemoveTagFromEntity(c.Request.Context(), req.TagID, req.EntityID, req.EntityType); err != nil {
-		h.logger.Error(c.Request.Context(), "RemoveTagFromEntity", "Failed to remove tag from entity", err, map[string]interface{}{
+		h.logger.Error("RemoveTagFromEntity", "Failed to remove tag from entity", err, map[string]interface{}{
 			"tag_id":      req.TagID,
 			"entity_id":   req.EntityID,
 			"entity_type": req.EntityType,
 		})
-		c.JSON(http.StatusInternalServerError, responses.Response{
-			Success: false,
-			Message: "Failed to remove tag from entity",
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to remove tag from entity",
 		})
 		return
 	}
 
-	h.logger.Info(c.Request.Context(), "RemoveTagFromEntity", "Tag removed from entity successfully", map[string]interface{}{
+	h.logger.Info("RemoveTagFromEntity", "Tag removed from entity successfully", map[string]interface{}{
 		"tag_id":      req.TagID,
 		"entity_id":   req.EntityID,
 		"entity_type": req.EntityType,
 	})
 
-	c.JSON(http.StatusOK, responses.Response{
-		Success: true,
-		Message: "Tag removed from entity successfully",
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Tag removed from entity successfully",
 	})
 }
 
@@ -504,40 +505,40 @@ func (h *TagHandler) GetTagsByEntity(c *gin.Context) {
 
 	entityID, err := strconv.ParseUint(entityIDStr, 10, 32)
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "GetTagsByEntity", "Invalid entity ID", err, map[string]interface{}{
+		h.logger.Error("GetTagsByEntity", "Invalid entity ID", err, map[string]interface{}{
 			"entity_id": entityIDStr,
 		})
-		c.JSON(http.StatusBadRequest, responses.Response{
-			Success: false,
-			Message: "Invalid entity ID",
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid entity ID",
 		})
 		return
 	}
 
 	if entityType == "" {
-		c.JSON(http.StatusBadRequest, responses.Response{
-			Success: false,
-			Message: "Entity type is required",
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Entity type is required",
 		})
 		return
 	}
 
-	tags, err := h.tagService.GetTagsByEntity(c.Request.Context(), uint(entityID), entityType)
+	tags, err := h.tagService.GetTagsByEntity(c.Request.Context(), uint64(entityID), entityType)
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "GetTagsByEntity", "Failed to get entity tags", err, map[string]interface{}{
+		h.logger.Error("GetTagsByEntity", "Failed to get entity tags", err, map[string]interface{}{
 			"entity_id":   entityID,
 			"entity_type": entityType,
 		})
-		c.JSON(http.StatusInternalServerError, responses.Response{
-			Success: false,
-			Message: "Failed to get entity tags",
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to get entity tags",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, responses.Response{
-		Success: true,
-		Data:    tags,
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    tags,
 	})
 }
 
@@ -557,7 +558,7 @@ func (h *TagHandler) GetTagsByEntity(c *gin.Context) {
 func (h *TagHandler) GetEntitiesByTag(c *gin.Context) {
 	var req requests.GetEntitiesByTagRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		h.logger.Error(c.Request.Context(), "GetEntitiesByTag", "Failed to bind query", err)
+		h.logger.Error("GetEntitiesByTag", "Failed to bind query", err)
 		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
 		return
 	}
@@ -567,23 +568,23 @@ func (h *TagHandler) GetEntitiesByTag(c *gin.Context) {
 		req.Limit = 10
 	}
 
-	entities, total, err := h.tagService.GetEntitiesByTag(c.Request.Context(), req.TagID, req.EntityType, req.Limit, req.Offset)
+	entities, total, err := h.tagService.GetEntitiesByTag(c.Request.Context(), uint64(req.TagID), req.EntityType, req.Limit, req.Offset)
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "GetEntitiesByTag", "Failed to get entities by tag", err, map[string]interface{}{
+		h.logger.Error("GetEntitiesByTag", "Failed to get entities by tag", err, map[string]interface{}{
 			"tag_id":      req.TagID,
 			"entity_type": req.EntityType,
 		})
-		c.JSON(http.StatusInternalServerError, responses.Response{
-			Success: false,
-			Message: "Failed to get entities by tag",
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to get entities by tag",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, responses.Response{
-		Success: true,
-		Data:    entities,
-		Meta: map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    entities,
+		"meta": map[string]interface{}{
 			"total":       total,
 			"limit":       req.Limit,
 			"offset":      req.Offset,
@@ -604,16 +605,16 @@ func (h *TagHandler) GetEntitiesByTag(c *gin.Context) {
 func (h *TagHandler) GetTagCount(c *gin.Context) {
 	count, err := h.tagService.GetTagCount(c.Request.Context())
 	if err != nil {
-		h.logger.Error(c.Request.Context(), "GetTagCount", "Failed to get tag count", err)
-		c.JSON(http.StatusInternalServerError, responses.Response{
-			Success: false,
-			Message: "Failed to get tag count",
+		h.logger.Error("GetTagCount", "Failed to get tag count", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to get tag count",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, responses.Response{
-		Success: true,
-		Data:    count,
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    count,
 	})
 }

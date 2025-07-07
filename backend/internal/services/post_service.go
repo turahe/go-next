@@ -85,7 +85,10 @@ func (s *postService) GetPostBySlug(ctx context.Context, slug string) (*models.P
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, &post, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, &post, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &post, nil
@@ -136,7 +139,10 @@ func (s *postService) GetPostsByCategory(ctx context.Context, categoryID string)
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, posts, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, posts, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return posts, nil
@@ -161,7 +167,10 @@ func (s *postService) GetPostsByUser(ctx context.Context, userID string) ([]mode
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, posts, redis.DefaultTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, posts, redis.DefaultTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return posts, nil
@@ -186,7 +195,10 @@ func (s *postService) GetPublishedPosts(ctx context.Context) ([]models.Post, err
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, posts, redis.ShortTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, posts, redis.ShortTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return posts, nil
@@ -211,7 +223,10 @@ func (s *postService) GetDraftPosts(ctx context.Context) ([]models.Post, error) 
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, posts, redis.ShortTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, posts, redis.ShortTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return posts, nil
@@ -234,7 +249,10 @@ func (s *postService) CreatePost(ctx context.Context, post *models.Post) error {
 
 		// Invalidate caches
 		if s.Redis != nil {
-			s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.PostCachePrefix))
+			err := s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.PostCachePrefix))
+			if err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -269,8 +287,14 @@ func (s *postService) PublishPost(ctx context.Context, id string) error {
 
 	// Invalidate caches
 	if s.Redis != nil {
-		s.Redis.InvalidatePostCache(ctx, id)
-		s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.PostCachePrefix))
+		err := s.Redis.InvalidatePostCache(ctx, id)
+		if err != nil {
+			return err
+		}
+		err = s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.PostCachePrefix))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -291,8 +315,14 @@ func (s *postService) ArchivePost(ctx context.Context, id string) error {
 
 	// Invalidate caches
 	if s.Redis != nil {
-		s.Redis.InvalidatePostCache(ctx, id)
-		s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.PostCachePrefix))
+		err := s.Redis.InvalidatePostCache(ctx, id)
+		if err != nil {
+			return err
+		}
+		err = s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", redis.PostCachePrefix))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -319,7 +349,10 @@ func (s *postService) SearchPosts(ctx context.Context, query string) ([]models.P
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, posts, redis.ShortTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, posts, redis.ShortTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return posts, nil
@@ -354,12 +387,15 @@ func (s *postService) GetPostStats(ctx context.Context, postID string) (map[stri
 		"status":        post.Status,
 		"created_at":    post.CreatedAt,
 		"updated_at":    post.UpdatedAt,
-		"word_count":    len(post.Content),
+		"word_count":    len(post.Contents),
 	}
 
 	// Cache the stats
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, stats, redis.ShortTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, stats, redis.ShortTTL)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return stats, nil
@@ -384,7 +420,10 @@ func (s *postService) GetPostCount(ctx context.Context) (int64, error) {
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, count, redis.LongTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, count, redis.LongTTL)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	return count, nil
@@ -409,31 +448,13 @@ func (s *postService) GetPublishedPostCount(ctx context.Context) (int64, error) 
 
 	// Cache the result
 	if s.Redis != nil {
-		s.Redis.SetCache(ctx, cacheKey, count, redis.LongTTL)
+		err := s.Redis.SetCache(ctx, cacheKey, count, redis.LongTTL)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	return count, nil
-}
-
-// Legacy methods for backward compatibility
-func (s *postService) GetAllPosts() ([]models.Post, error) {
-	return s.GetAllPosts(context.Background())
-}
-
-func (s *postService) GetPostByID(id string) (*models.Post, error) {
-	return s.GetPostByID(context.Background(), id)
-}
-
-func (s *postService) CreatePost(post *models.Post) error {
-	return s.CreatePost(context.Background(), post)
-}
-
-func (s *postService) UpdatePost(post *models.Post) error {
-	return s.UpdatePost(context.Background(), post)
-}
-
-func (s *postService) DeletePost(id string) error {
-	return s.DeletePost(context.Background(), id)
 }
 
 // Global service instance

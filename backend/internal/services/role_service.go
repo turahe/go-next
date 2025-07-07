@@ -18,7 +18,7 @@ type RoleService interface {
 	UpdateRole(ctx context.Context, role *models.Role) error
 	DeleteRole(ctx context.Context, id string) error
 	GetRolesByUser(ctx context.Context, userID uint) ([]models.Role, error)
-	InvalidateRoleCache(ctx context.Context, roleID uint) error
+	InvalidateRoleCache(ctx context.Context, roleID uint64) error
 }
 
 type roleService struct {
@@ -39,7 +39,7 @@ const (
 	roleUserKeyPrefix      = "role:user:"
 )
 
-func (s *roleService) getRoleCacheKey(id uint) string {
+func (s *roleService) getRoleCacheKey(id uint64) string {
 	return fmt.Sprintf("%s%d", roleCacheKeyPrefix, id)
 }
 
@@ -74,15 +74,18 @@ func (s *roleService) GetAllRoles(ctx context.Context) ([]models.Role, error) {
 
 	// Cache the result
 	if data, err := json.Marshal(roles); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return roles, err
 }
 
 func (s *roleService) GetRoleByID(ctx context.Context, id string) (*models.Role, error) {
-	// Parse ID to uint for cache key
-	var roleID uint
+	// Parse ID to uint64 for cache key
+	var roleID uint64
 	if _, err := fmt.Sscanf(id, "%d", &roleID); err != nil {
 		return nil, fmt.Errorf("invalid role ID format: %w", err)
 	}
@@ -169,6 +172,11 @@ func (s *roleService) UpdateRole(ctx context.Context, role *models.Role) error {
 }
 
 func (s *roleService) DeleteRole(ctx context.Context, id string) error {
+	// Parse ID to uint64 for cache key
+	var roleID uint64
+	if _, err := fmt.Sscanf(id, "%d", &roleID); err != nil {
+		return fmt.Errorf("invalid role ID format: %w", err)
+	}
 	// Get role first to invalidate related caches
 	var role models.Role
 	if err := database.DB.WithContext(ctx).First(&role, id).Error; err != nil {
@@ -180,7 +188,7 @@ func (s *roleService) DeleteRole(ctx context.Context, id string) error {
 	}
 
 	// Invalidate caches
-	s.invalidateRoleCaches(ctx, role.ID)
+	s.invalidateRoleCaches(ctx, roleID)
 	s.invalidateRelatedCaches(ctx)
 
 	return nil
@@ -205,13 +213,16 @@ func (s *roleService) GetRolesByUser(ctx context.Context, userID uint) ([]models
 
 	// Cache the result
 	if data, err := json.Marshal(user.Roles); err == nil {
-		s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		err := s.Redis.SetWithTTL(ctx, cacheKey, string(data), 30*time.Minute)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return user.Roles, err
 }
 
-func (s *roleService) InvalidateRoleCache(ctx context.Context, roleID uint) error {
+func (s *roleService) InvalidateRoleCache(ctx context.Context, roleID uint64) error {
 	s.invalidateRoleCaches(ctx, roleID)
 	return nil
 }
@@ -234,13 +245,16 @@ func (s *roleService) cacheRole(ctx context.Context, role *models.Role) error {
 	return s.Redis.SetWithTTL(ctx, nameCacheKey, string(data), 30*time.Minute)
 }
 
-func (s *roleService) invalidateRoleCaches(ctx context.Context, roleID uint) {
+func (s *roleService) invalidateRoleCaches(ctx context.Context, roleID uint64) {
 	cacheKeys := []string{
 		s.getRoleCacheKey(roleID),
 	}
 
 	for _, key := range cacheKeys {
-		s.Redis.Delete(ctx, key)
+		err := s.Redis.Delete(ctx, key)
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -252,7 +266,10 @@ func (s *roleService) invalidateRelatedCaches(ctx context.Context) {
 	}
 
 	for _, pattern := range patterns {
-		s.Redis.DeletePattern(ctx, pattern)
+		err := s.Redis.DeletePattern(ctx, pattern)
+		if err != nil {
+			return
+		}
 	}
 }
 

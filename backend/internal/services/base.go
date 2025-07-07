@@ -29,7 +29,10 @@ func (s *BaseService) CreateWithCache(ctx context.Context, value interface{}, ca
 
 	// Invalidate related caches
 	if s.Redis != nil && cacheKey != "" {
-		s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", cacheKey))
+		err := s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", cacheKey))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -43,7 +46,10 @@ func (s *BaseService) SaveWithCache(ctx context.Context, value interface{}, cach
 
 	// Invalidate related caches
 	if s.Redis != nil && cacheKey != "" {
-		s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", cacheKey))
+		err := s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", cacheKey))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -57,7 +63,10 @@ func (s *BaseService) UpdateWithCache(ctx context.Context, value interface{}, ca
 
 	// Invalidate related caches
 	if s.Redis != nil && cacheKey != "" {
-		s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", cacheKey))
+		err := s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", cacheKey))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -71,7 +80,10 @@ func (s *BaseService) DeleteWithCache(ctx context.Context, value interface{}, ca
 
 	// Invalidate related caches
 	if s.Redis != nil && cacheKey != "" {
-		s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", cacheKey))
+		err := s.Redis.DeletePattern(ctx, fmt.Sprintf("%s*", cacheKey))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -95,7 +107,10 @@ func (s *BaseService) GetByIDWithCache(ctx context.Context, id string, dest inte
 	// Cache the result
 	if s.Redis != nil && cacheKey != "" {
 		fullKey := fmt.Sprintf("%s%s", cacheKey, id)
-		s.Redis.SetCache(ctx, fullKey, dest, ttl)
+		err := s.Redis.SetCache(ctx, fullKey, dest, ttl)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -124,7 +139,10 @@ func (s *BaseService) GetByIDWithCacheAndPreload(ctx context.Context, id string,
 	// Cache the result
 	if s.Redis != nil && cacheKey != "" {
 		fullKey := fmt.Sprintf("%s%s", cacheKey, id)
-		s.Redis.SetCache(ctx, fullKey, dest, ttl)
+		err := s.Redis.SetCache(ctx, fullKey, dest, ttl)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -146,7 +164,10 @@ func (s *BaseService) GetAllWithCache(ctx context.Context, dest interface{}, cac
 
 	// Cache the result
 	if s.Redis != nil && cacheKey != "" {
-		s.Redis.SetCache(ctx, cacheKey, dest, ttl)
+		err := s.Redis.SetCache(ctx, cacheKey, dest, ttl)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -173,7 +194,10 @@ func (s *BaseService) GetAllWithCacheAndPreload(ctx context.Context, dest interf
 
 	// Cache the result
 	if s.Redis != nil && cacheKey != "" {
-		s.Redis.SetCache(ctx, cacheKey, dest, ttl)
+		err := s.Redis.SetCache(ctx, cacheKey, dest, ttl)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -254,7 +278,10 @@ func (s *BaseService) PaginateWithCache(ctx context.Context, model interface{}, 
 
 	// Cache the result
 	if s.Redis != nil && cacheKey != "" {
-		s.Redis.SetCache(ctx, paginationKey, result, ttl)
+		err := s.Redis.SetCache(ctx, paginationKey, result, ttl)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return result, nil

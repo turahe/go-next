@@ -10,7 +10,7 @@ import (
 // Content represents additional content associated with models (polymorphic)
 type Content struct {
 	Base
-	ModelID   uint   `gorm:"not null;index" json:"model_id" validate:"required"`
+	ModelID   uint64 `gorm:"not null;index" json:"model_id" validate:"required"`
 	ModelType string `gorm:"not null;size:50;index" json:"model_type" validate:"required"`
 	Content   string `gorm:"type:text;not null" json:"content" validate:"required,min=1"`
 	Type      string `gorm:"size:50;index" json:"type,omitempty"` // content type: text, html, markdown, etc.
