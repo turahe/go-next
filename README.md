@@ -65,6 +65,16 @@ go-next/
 - **Casbin** - Authorization library
 - **PostgreSQL/MySQL** - Database
 
+## 📚 Documentation
+
+For comprehensive documentation, guides, and setup instructions, see the [Documentation](./docs/) directory:
+
+- **[📚 Documentation Overview](./docs/README.md)** - Complete documentation index
+- **[🏗️ Project Documentation](./docs/project/)** - Project structure, roadmap, and implementation guides
+- **[🎨 Frontend Documentation](./docs/admin-frontend/)** - React admin panel setup and configuration
+- **[⚙️ Backend Documentation](./docs/backend/)** - Go backend setup and configuration
+- **[🔌 API Documentation](./docs/api/)** - API guides, Swagger specs, and technical documentation
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -144,6 +154,15 @@ REDIS_URL=redis://localhost:6379
 #### Frontend (.env)
 ```env
 VITE_API_URL=http://localhost:8080/api
+```
+
+**Quick Setup:**
+```bash
+# Copy the minimal environment template
+cp admin-frontend/env.minimal admin-frontend/.env
+
+# Or copy the complete template
+cp admin-frontend/env.example admin-frontend/.env
 ```
 
 ## 📚 API Documentation
