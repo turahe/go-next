@@ -2,7 +2,7 @@ package requests
 
 import "time"
 
-type UserProfileUpdateInput struct {
+type UserProfileUpdateRequest struct {
 	Username      string     `json:"username" validate:"required,min=3,max=32"`
 	Email         string     `json:"email" validate:"required,email"`
 	Phone         string     `json:"phone" validate:"omitempty,e164"`

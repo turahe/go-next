@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/getsentry/sentry-go/logrus"
+	sentrylogrus "github.com/getsentry/sentry-go/logrus"
 	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var logger = logrus.New()
@@ -30,8 +32,15 @@ func init() {
 		logger.Fatalf("sentry.Init: %s", err)
 	}
 
-	// Add Sentry hook to Logrus
-	logger.AddHook(&sentrylogrus.Hook{})
+	// Add Sentry hook to Logrus (for sentry-go/logrus v0.13.0+)
+	hook, err := sentrylogrus.New([]logrus.Level{
+		logrus.PanicLevel,
+		logrus.FatalLevel,
+		logrus.ErrorLevel,
+	}, sentry.ClientOptions{})
+	if err == nil {
+		logger.AddHook(hook)
+	}
 }
 
 func SetLogLevel(level logrus.Level) {
@@ -118,3 +127,114 @@ func (f *formatter) Format(entry *logrus.Entry) ([]byte, error) {
 
 	return sb.Bytes(), nil
 }
+
+// --- Structured Service Logger (zap-based) ---
+// Provides structured logging for services, used by internal/services
+
+// LogLevel represents different logging levels
+// (from services/logger.go)
+type LogLevel string
+
+const (
+	LogLevelDebug   LogLevel = "debug"
+	LogLevelInfo    LogLevel = "info"
+	LogLevelWarning LogLevel = "warning"
+	LogLevelError   LogLevel = "error"
+	LogLevelFatal   LogLevel = "fatal"
+)
+
+// LogEvent represents a structured log event
+// (from services/logger.go)
+type LogEvent struct {
+	Service     string                 `json:"service"`
+	Method      string                 `json:"method"`
+	Level       LogLevel               `json:"level"`
+	Message     string                 `json:"message"`
+	Error       error                  `json:"error,omitempty"`
+	Duration    time.Duration          `json:"duration,omitempty"`
+	UserID      uint                   `json:"user_id,omitempty"`
+	EntityID    uint                   `json:"entity_id,omitempty"`
+	EntityType  string                 `json:"entity_type,omitempty"`
+	CacheHit    bool                   `json:"cache_hit,omitempty"`
+	CacheKey    string                 `json:"cache_key,omitempty"`
+	DatabaseOps int                    `json:"database_ops,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	Timestamp   time.Time              `json:"timestamp"`
+	TraceID     string                 `json:"trace_id,omitempty"`
+}
+
+// ServiceLogger provides structured logging for services
+// (from services/logger.go)
+type ServiceLogger struct {
+	logger *zap.Logger
+	sugar  *zap.SugaredLogger
+}
+
+// NewServiceLogger creates a new zap-based ServiceLogger
+func NewServiceLogger(level LogLevel, serviceName string) *ServiceLogger {
+	var cfg zap.Config
+	if level == LogLevelDebug {
+		cfg = zap.NewDevelopmentConfig()
+	} else {
+		cfg = zap.NewProductionConfig()
+	}
+	cfg.Level = zap.NewAtomicLevelAt(zapcore.Level(parseZapLevel(level)))
+	cfg.OutputPaths = []string{"stdout"}
+	cfg.InitialFields = map[string]interface{}{"service": serviceName}
+	logger, _ := cfg.Build()
+	return &ServiceLogger{
+		logger: logger,
+		sugar:  logger.Sugar(),
+	}
+}
+
+// parseZapLevel converts LogLevel to zapcore.Level
+func parseZapLevel(level LogLevel) zapcore.Level {
+	switch level {
+	case LogLevelDebug:
+		return zapcore.DebugLevel
+	case LogLevelInfo:
+		return zapcore.InfoLevel
+	case LogLevelWarning:
+		return zapcore.WarnLevel
+	case LogLevelError:
+		return zapcore.ErrorLevel
+	case LogLevelFatal:
+		return zapcore.FatalLevel
+	default:
+		return zapcore.InfoLevel
+	}
+}
+
+// InitializeLogger sets up a global zap logger for the service
+func InitializeLogger(level LogLevel, serviceName string) {
+	logger := NewServiceLogger(level, serviceName)
+	zap.ReplaceGlobals(logger.logger)
+}
+
+// Info logs an info message with optional key-value pairs
+func (l *ServiceLogger) Info(msg string, keysAndValues ...interface{}) {
+	l.sugar.Infow(msg, keysAndValues...)
+}
+
+// Debug logs a debug message with optional key-value pairs
+func (l *ServiceLogger) Debug(msg string, keysAndValues ...interface{}) {
+	l.sugar.Debugw(msg, keysAndValues...)
+}
+
+// Warn logs a warning message with optional key-value pairs
+func (l *ServiceLogger) Warn(msg string, keysAndValues ...interface{}) {
+	l.sugar.Warnw(msg, keysAndValues...)
+}
+
+// Error logs an error message with optional key-value pairs
+func (l *ServiceLogger) Error(msg string, keysAndValues ...interface{}) {
+	l.sugar.Errorw(msg, keysAndValues...)
+}
+
+// Fatal logs a fatal message with optional key-value pairs and exits
+func (l *ServiceLogger) Fatal(msg string, keysAndValues ...interface{}) {
+	l.sugar.Fatalw(msg, keysAndValues...)
+}
+
+// ... (copy all ServiceLogger methods, NewServiceLogger, InitializeLogger, GetLogger, etc. from services/logger.go) ...

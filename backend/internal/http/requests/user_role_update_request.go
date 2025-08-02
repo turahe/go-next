@@ -1,5 +1,5 @@
 package requests
 
-type UserRoleUpdateInput struct {
+type UserRoleUpdateRequest struct {
 	Role string `json:"role" validate:"required,oneof=admin editor moderator user guest"`
 }
