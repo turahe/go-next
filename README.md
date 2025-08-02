@@ -161,8 +161,8 @@ VITE_API_URL=http://localhost:8080/api
 # Copy the minimal environment template
 cp admin-frontend/env.minimal admin-frontend/.env
 
-# Or copy the complete template from docs
-cp docs/admin-frontend/env.example admin-frontend/.env
+# Or copy the complete template
+cp admin-frontend/env.example admin-frontend/.env
 ```
 
 ## 📚 API Documentation
