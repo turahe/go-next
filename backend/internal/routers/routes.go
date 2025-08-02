@@ -36,7 +36,7 @@ func RegisterRoutes(r *gin.Engine) {
 	api := r.Group("/api/v1")
 	api.POST("/register", authHandler.Register)
 	api.POST("/login", authHandler.Login)
-	api.POST("/request-password-reset", authHandler.RequestPasswordReset)
+	// api.POST("/password-reset", authHandler.RequestPasswordReset) // Method not implemented
 	api.POST("/reset-password", authHandler.ResetPassword)
 	api.POST("/auth/refresh", authHandler.RefreshToken)
 

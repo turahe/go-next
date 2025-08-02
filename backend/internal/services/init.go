@@ -39,14 +39,14 @@ func NewServiceManager(redisService *redis.RedisService, storageService storage.
 	}
 
 	// Initialize all services
-	manager.UserService = NewUserService(redisService)
+	manager.UserService = NewUserService()
 	manager.PostService = NewPostService(redisService)
 	manager.CategoryService = NewCategoryService(redisService)
 	manager.CommentService = NewCommentService(redisService)
-	manager.MediaService = NewMediaService(storageService, redisService)
+	manager.MediaService = NewMediaService()
 	manager.RoleService = NewRoleService(redisService)
 	manager.UserRoleService = NewUserRoleService(redisService)
-	manager.AuthService = NewAuthService(redisService)
+	manager.AuthService = NewAuthService()
 	manager.TagService = NewTagService(redisService)
 
 	// Log service initialization
@@ -116,15 +116,16 @@ func (sm *ServiceManager) WarmCache(ctx context.Context) error {
 
 // warmUserCache warms up user-related caches
 func (sm *ServiceManager) warmUserCache(ctx context.Context) error {
+	// TODO: Implement user cache warming when methods are available
 	// Warm active users cache
-	if _, err := sm.UserService.GetActiveUsers(ctx); err != nil {
-		return err
-	}
+	// if _, err := sm.UserService.GetActiveUsers(ctx); err != nil {
+	// 	return err
+	// }
 
 	// Warm user count cache
-	if _, err := sm.UserService.GetUserCount(ctx); err != nil {
-		return err
-	}
+	// if _, err := sm.UserService.GetUserCount(ctx); err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
@@ -289,6 +290,10 @@ func (sm *ServiceManager) HealthCheck(ctx context.Context) (map[string]interface
 
 // Global service manager instance
 var ServiceMgr *ServiceManager
+
+// Global service instances
+var UserSvc UserService
+var AuthSvc AuthService
 
 // Initialize global services
 func init() {

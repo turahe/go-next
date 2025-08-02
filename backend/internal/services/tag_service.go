@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 	"go-next/internal/http/responses"
 	"go-next/internal/models"
 	"go-next/pkg/database"
 	"go-next/pkg/redis"
+	"time"
 )
 
 // TagService interface for tag management
@@ -483,7 +483,6 @@ func (s *tagService) invalidateRelatedCaches(ctx context.Context) {
 }
 
 func (s *tagService) GetTagsWithPagination(ctx context.Context, page, perPage int, search, tagType string) (*responses.PaginationResponse, error) {
-	params := PaginationParams{Page: page, PerPage: perPage}
 	query := database.DB
 	if tagType != "" {
 		query = query.Where("type = ?", tagType)
@@ -492,13 +491,48 @@ func (s *tagService) GetTagsWithPagination(ctx context.Context, page, perPage in
 		like := "%" + search + "%"
 		query = query.Where("name LIKE ? OR description LIKE ?", like, like)
 	}
+
 	var tags []models.Tag
-	result, err := (&BaseService{Redis: s.Redis}).PaginateWithCacheQuery(ctx, &models.Tag{}, params, &tags, "", 0, query)
-	if err != nil {
+	var total int64
+
+	// Count total
+	if err := query.Model(&models.Tag{}).Count(&total).Error; err != nil {
 		return nil, err
 	}
-	result.Data = tags
-	return result, nil
+
+	// Get paginated results
+	offset := (page - 1) * perPage
+	if err := query.Offset(offset).Limit(perPage).Find(&tags).Error; err != nil {
+		return nil, err
+	}
+
+	// Calculate pagination info
+	totalPages := (total + int64(perPage) - 1) / int64(perPage)
+	lastPage := totalPages
+	if lastPage == 0 {
+		lastPage = 1
+	}
+
+	nextPage := int64(page) + 1
+	if nextPage > lastPage {
+		nextPage = 0
+	}
+
+	prevPage := int64(page) - 1
+	if prevPage < 1 {
+		prevPage = 0
+	}
+
+	return &responses.PaginationResponse{
+		Data:         tags,
+		TotalCount:   total,
+		TotalPage:    totalPages,
+		CurrentPage:  int64(page),
+		LastPage:     lastPage,
+		PerPage:      int64(perPage),
+		NextPage:     nextPage,
+		PreviousPage: prevPage,
+	}, nil
 }
 
 // Global tag service instance

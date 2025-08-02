@@ -28,9 +28,9 @@ func NewNotificationHandler() *NotificationHandler {
 // @Produce json
 // @Param limit query int false "Limit number of notifications"
 // @Param offset query int false "Offset for pagination"
-// @Success 200 {object} responses.Response{data=[]models.Notification}
-// @Failure 400 {object} responses.Response
-// @Failure 401 {object} responses.Response
+// @Success 200 {object} responses.SuccessResponse{data=[]models.Notification}
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 401 {object} responses.ErrorResponse
 // @Router /notifications [get]
 func (h *NotificationHandler) GetUserNotifications(c *gin.Context) {
 	userID := c.GetString("user_id")
@@ -69,8 +69,8 @@ func (h *NotificationHandler) GetUserNotifications(c *gin.Context) {
 // @Tags notifications
 // @Accept json
 // @Produce json
-// @Success 200 {object} responses.Response{data=int64}
-// @Failure 401 {object} responses.Response
+// @Success 200 {object} responses.SuccessResponse{data=int64}
+// @Failure 401 {object} responses.ErrorResponse
 // @Router /notifications/unread-count [get]
 func (h *NotificationHandler) GetUnreadCount(c *gin.Context) {
 	userID := c.GetString("user_id")
@@ -95,10 +95,10 @@ func (h *NotificationHandler) GetUnreadCount(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path int true "Notification ID"
-// @Success 200 {object} responses.Response
-// @Failure 400 {object} responses.Response
-// @Failure 401 {object} responses.Response
-// @Failure 404 {object} responses.Response
+// @Success 200 {object} responses.SuccessResponse
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 401 {object} responses.ErrorResponse
+// @Failure 404 {object} responses.ErrorResponse
 // @Router /notifications/{id}/read [put]
 func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 	userID := c.GetString("user_id")
@@ -133,8 +133,8 @@ func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 // @Tags notifications
 // @Accept json
 // @Produce json
-// @Success 200 {object} responses.Response
-// @Failure 401 {object} responses.Response
+// @Success 200 {object} responses.SuccessResponse
+// @Failure 401 {object} responses.ErrorResponse
 // @Router /notifications/mark-all-read [put]
 func (h *NotificationHandler) MarkAllAsRead(c *gin.Context) {
 	userID := c.GetString("user_id")
@@ -159,10 +159,10 @@ func (h *NotificationHandler) MarkAllAsRead(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path int true "Notification ID"
-// @Success 200 {object} responses.Response
-// @Failure 400 {object} responses.Response
-// @Failure 401 {object} responses.Response
-// @Failure 404 {object} responses.Response
+// @Success 200 {object} responses.SuccessResponse
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 401 {object} responses.ErrorResponse
+// @Failure 404 {object} responses.ErrorResponse
 // @Router /notifications/{id} [delete]
 func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
 	userID := c.GetString("user_id")
@@ -197,8 +197,8 @@ func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
 // @Tags notifications
 // @Accept json
 // @Produce json
-// @Success 200 {object} responses.Response
-// @Failure 401 {object} responses.Response
+// @Success 200 {object} responses.SuccessResponse
+// @Failure 401 {object} responses.ErrorResponse
 // @Router /notifications [delete]
 func (h *NotificationHandler) DeleteAllNotifications(c *gin.Context) {
 	userID := c.GetString("user_id")
@@ -223,10 +223,10 @@ func (h *NotificationHandler) DeleteAllNotifications(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param notification body models.NotificationRequest true "Notification data"
-// @Success 201 {object} responses.Response{data=models.Notification}
-// @Failure 400 {object} responses.Response
-// @Failure 401 {object} responses.Response
-// @Failure 403 {object} responses.Response
+// @Success 201 {object} responses.SuccessResponse{data=models.Notification}
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 401 {object} responses.ErrorResponse
+// @Failure 403 {object} responses.ErrorResponse
 // @Router /admin/notifications [post]
 func (h *NotificationHandler) CreateNotification(c *gin.Context) {
 	var req models.NotificationRequest

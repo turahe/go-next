@@ -25,7 +25,6 @@ type AuthHandler interface {
 	VerifyEmail(c *gin.Context)
 	RequestPhoneVerification(c *gin.Context)
 	VerifyPhone(c *gin.Context)
-	RequestPasswordReset(c *gin.Context)
 	ResetPassword(c *gin.Context)
 	RefreshToken(c *gin.Context)
 }
@@ -43,6 +42,17 @@ type AuthResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+// Register creates a new user account
+// @Summary Register new user
+// @Description Create a new user account with the provided credentials
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param user body requests.AuthRequest true "User registration data"
+// @Success 201 {object} responses.CommonResponse{data=map[string]interface{}}
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 500 {object} responses.ErrorResponse
+// @Router /auth/register [post]
 func (h *authHandler) Register(c *gin.Context) {
 	var req requests.AuthRequest
 	if !requests.ValidateRequest(c, &req) {
@@ -124,6 +134,18 @@ func (h *authHandler) Register(c *gin.Context) {
 	})
 }
 
+// Login authenticates a user and returns access tokens
+// @Summary User login
+// @Description Authenticate user with email and password, return access and refresh tokens
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param credentials body requests.AuthRequest true "Login credentials"
+// @Success 200 {object} AuthResponse
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 401 {object} responses.ErrorResponse
+// @Failure 500 {object} responses.ErrorResponse
+// @Router /auth/login [post]
 func (h *authHandler) Login(c *gin.Context) {
 	var req requests.AuthRequest
 	if !requests.ValidateRequestPartial(c, &req, "Email", "Password") {
@@ -164,7 +186,18 @@ func (h *authHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, AuthResponse{Token: token, RefreshToken: refreshToken})
 }
 
-// RefreshToken endpoint
+// RefreshToken refreshes the access token using a refresh token
+// @Summary Refresh access token
+// @Description Use refresh token to get a new access token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param refresh body object true "Refresh token data" schema(object{refresh_token=string})
+// @Success 200 {object} AuthResponse
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 401 {object} responses.ErrorResponse
+// @Failure 500 {object} responses.ErrorResponse
+// @Router /auth/refresh [post]
 func (h *authHandler) RefreshToken(c *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refresh_token" binding:"required"`
@@ -212,6 +245,18 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 	c.JSON(200, AuthResponse{Token: token, RefreshToken: newRefreshToken})
 }
 
+// RequestEmailVerification sends an email verification token to the user
+// @Summary Request email verification
+// @Description Send email verification token to user's email address
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Success 200 {object} responses.SuccessResponse{data=string}
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 404 {object} responses.ErrorResponse
+// @Failure 500 {object} responses.ErrorResponse
+// @Router /users/{id}/request-email-verification [post]
 func (h *authHandler) RequestEmailVerification(c *gin.Context) {
 	id := c.Param("id")
 	var user models.User
@@ -244,6 +289,19 @@ func (h *authHandler) RequestEmailVerification(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Verification email sent", "token": token})
 }
 
+// VerifyEmail verifies the user's email address using the provided token
+// @Summary Verify email address
+// @Description Verify user's email address using the verification token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Param verification body object true "Verification data" schema(object{token=string})
+// @Success 200 {object} responses.SuccessResponse
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 404 {object} responses.ErrorResponse
+// @Failure 500 {object} responses.ErrorResponse
+// @Router /users/{id}/verify-email [post]
 func (h *authHandler) VerifyEmail(c *gin.Context) {
 	id := c.Param("id")
 	var input struct {
@@ -290,6 +348,18 @@ func (h *authHandler) VerifyEmail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Email verified"})
 }
 
+// RequestPhoneVerification sends an SMS verification token to the user
+// @Summary Request phone verification
+// @Description Send SMS verification token to user's phone number
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Success 200 {object} responses.SuccessResponse{data=string}
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 404 {object} responses.ErrorResponse
+// @Failure 500 {object} responses.ErrorResponse
+// @Router /users/{id}/request-phone-verification [post]
 func (h *authHandler) RequestPhoneVerification(c *gin.Context) {
 	id := c.Param("id")
 	var user models.User
@@ -322,6 +392,19 @@ func (h *authHandler) RequestPhoneVerification(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Verification SMS sent", "token": token})
 }
 
+// VerifyPhone verifies the user's phone number using the provided token
+// @Summary Verify phone number
+// @Description Verify user's phone number using the verification token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Param verification body object true "Verification data" schema(object{token=string})
+// @Success 200 {object} responses.SuccessResponse
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 404 {object} responses.ErrorResponse
+// @Failure 500 {object} responses.ErrorResponse
+// @Router /users/{id}/verify-phone [post]
 func (h *authHandler) VerifyPhone(c *gin.Context) {
 	id := c.Param("id")
 	var input struct {
@@ -368,44 +451,18 @@ func (h *authHandler) VerifyPhone(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Phone verified"})
 }
 
-func (h *authHandler) RequestPasswordReset(c *gin.Context) {
-	var input struct {
-		Email string `json:"email"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		return
-	}
-	var user models.User
-	if err := database.DB.Where("email = ?", input.Email).First(&user).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
-	token, err := utils.GenerateRandomKey(32)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to generate token"})
-		return
-	}
-	t := models.VerificationToken{
-		UserID:    user.ID,
-		Token:     token,
-		Type:      "password_reset",
-		ExpiresAt: time.Now().Add(30 * time.Minute),
-	}
-	if err := database.DB.Create(&t).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Failed to create verification token"})
-		return
-	}
-
-	// Cache the verification token
-	services.TokenCacheSvc.CacheVerificationToken(&t)
-
-	// Invalidate user's verification tokens cache for this type
-	services.TokenCacheSvc.InvalidateUserVerificationTokens(user.ID, models.PasswordReset)
-
-	c.JSON(http.StatusOK, gin.H{"message": "Password reset link sent", "token": token})
-}
-
+// ResetPassword resets the user's password using a reset token
+// @Summary Reset password
+// @Description Reset user's password using the provided reset token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param reset body object true "Password reset data" schema(object{user_id=string,token=string,new_password=string})
+// @Success 200 {object} responses.SuccessResponse
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 404 {object} responses.ErrorResponse
+// @Failure 500 {object} responses.ErrorResponse
+// @Router /auth/reset-password [post]
 func (h *authHandler) ResetPassword(c *gin.Context) {
 	var input struct {
 		UserID      string `json:"user_id"`

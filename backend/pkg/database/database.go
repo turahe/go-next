@@ -58,9 +58,6 @@ func AutoMigrate() error {
 		&models.Media{},
 		&models.Mediable{},
 		&models.Content{},
-		&models.Token{},
-		&models.RefreshToken{},
-		&models.VerificationToken{},
 		&models.Notification{},
 	)
 
