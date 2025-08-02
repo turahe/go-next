@@ -1,162 +1,261 @@
-# WordPress Go Next Backend
+# Backend with PostgreSQL Docker Compose
 
-A modular, production-ready Golang backend for a WordPress-like web application. Features JWT authentication, Casbin RBAC, PostgreSQL, S3-compatible media uploads, and a clean service/controller architecture.
+This setup provides a Docker Compose configuration for the Go backend with PostgreSQL database.
 
-## Features
-- Modular Go structure (Gin, GORM, PostgreSQL)
-- JWT authentication & Casbin RBAC (admin, editor, moderator, user, guest)
-- User, Post, Comment, Category, Role, Media models
-- Media uploads to S3/MinIO (via casdoor/oss)
-- Polymorphic many-to-many media association
-- Email/phone verification & password reset
-- Docker Compose for local dev (PostgreSQL, MinIO)
-- Swagger (OpenAPI) API docs
-- Service interfaces for business logic
-- Test scaffolding for endpoints
+## 📁 Files
 
-## Prerequisites
-- Docker & Docker Compose
-- PowerShell (for Windows automation scripts)
-- Go 1.24+ (for local development outside Docker)
+- `docker-compose.yml` - Backend and PostgreSQL Docker Compose configuration
+- `Makefile` - Management commands for all operations
+- `.env` - Environment variables (create this file)
 
-## Environment Setup
+## 🚀 Quick Start
 
-This project uses environment-specific `.env` files for configuration:
-- `backend/.env.development`
-- `backend/.env.staging`
-- `backend/.env.production`
+### Using the Makefile
 
-You can generate these files automatically using the provided PowerShell script:
+```bash
+# Start backend with PostgreSQL
+make up
 
-```powershell
-# In the backend directory
-./setup-env.ps1
+# Check status
+make status
+
+# View logs
+make logs
+
+# Stop services
+make down
+
+# Restart services
+make restart
+
+# Show all available commands
+make help
 ```
 
-This will create all three `.env` files with example values if they do not already exist.
+### Manual Commands
 
-## Switching Environments
+```bash
+# Start services
+docker-compose up -d
 
-To switch between development, staging, and production environments, use the `switch-env.ps1` script:
+# View logs
+docker-compose logs -f
 
-```powershell
-# Usage:
-./switch-env.ps1 -envType development   # or staging, production
+# Stop services
+docker-compose down
+
+# Check status
+docker-compose ps
 ```
 
-This sets the appropriate `ENV` and `BUILD_TARGET` environment variables for Docker Compose.
+## 🔧 Services
 
-## Running the Backend with Docker Compose
+### PostgreSQL Database
+- **Image**: `postgres:15-alpine`
+- **Port**: `5432`
+- **Database**: `go_next`
+- **User**: `postgres`
+- **Password**: `postgres`
+- **Health Check**: `pg_isready`
 
-### Development (default)
-```powershell
-# Ensure ENV and BUILD_TARGET are set (default is development)
-docker compose up --build
-```
+### Backend Service
+- **Port**: `8080`
+- **Database**: PostgreSQL
+- **Environment**: Development
+- **Health Check**: `http://localhost:8080/health`
 
-### Staging
-```powershell
-./switch-env.ps1 -envType staging
-docker compose up --build
-```
-
-### Production
-```powershell
-./switch-env.ps1 -envType production
-docker compose up --build
-```
-
-## Manual Environment Switching
-If you prefer, you can set the environment variables manually:
-```powershell
-$env:ENV="production"
-$env:BUILD_TARGET="prod"
-docker compose up --build
-```
-
-## Healthchecks & Logging
-- The backend service includes a healthcheck on `/health`.
-- Logging is configured with rotation (max 10MB per file, 3 files).
-
-## Volumes
-- In development, the source code is mounted for hot reload.
-- In staging/production, remove or set the volume to read-only for security.
-
-## Troubleshooting
-- Ensure the correct `.env` file exists for your environment.
-- If you change environment variables, rebuild the containers: `docker compose up --build`
-- For port conflicts, adjust the `ports` section in `docker-compose.yml`.
-
-## Scripts
-- `setup-env.ps1`: Generates all required `.env` files with example values.
-- `switch-env.ps1`: Sets environment variables for Docker Compose based on the target environment.
-
-### Getting Started
-
-### Prerequisites
-- Go 1.20+
-- Docker & Docker Compose
-- (Optional) swag CLI for Swagger docs: `go install github.com/swaggo/swag/cmd/swag@latest`
-
-### Setup
-1. Clone the repo:
-   ```sh
-   git clone <repo-url>
-   cd wordpress-go-next/backend
-   ```
-2. Copy and edit environment variables:
-   ```sh
-   cp .env.example .env
-   # Edit .env as needed
-   ```
-3. Start services with Docker Compose:
-   ```sh
-   docker-compose up --build
-   ```
-   - PostgreSQL: `localhost:5432`
-   - MinIO: `localhost:9000` (UI: `localhost:9001`)
-   - Backend: `localhost:8080`
-
-4. Create the `media` bucket in MinIO (via UI or `mc` CLI).
-
-### Running Locally
-- Start backend only:
-  ```sh
-  go run main.go
-  ```
-- Run tests:
-  ```sh
-  go test ./...
-  ```
-
-### API Documentation
-- Swagger UI: [http://localhost:8080/swagger/index.html](http://localhost:8080/swagger/index.html)
-- Regenerate docs after code changes:
-  ```sh
-  swag init -g main.go -o docs
-  ```
+## 🔧 Configuration
 
 ### Environment Variables
-See `.env.example` for all required variables, including:
-- Database (PostgreSQL)
-- JWT secret
-- S3/MinIO credentials
-- Email/SMS provider settings
 
-### Project Structure
-- `cmd/` - Entrypoints
-- `internal/` - Controllers, services, models, middleware, routers
-- `pkg/` - Config, database, logger, storage, utils
-- `docs/` - Swagger docs
-- `tests/` - API tests
+Create a `.env` file in the backend directory:
 
-### Useful Commands
-- `make run` - Run backend
-- `make test` - Run tests
-- `make swag` - Regenerate Swagger docs
-- `make docker` - Build and run with Docker Compose
+```env
+# Application Settings
+APP_NAME=go-next-backend
+APP_ENV=development
+APP_DEBUG=true
+APP_URL=http://localhost:3000
+API_URL=http://localhost:8080
 
----
+# Backend Settings
+BACKEND_PORT=8080
+GIN_MODE=debug
+CORS_ORIGIN=http://localhost:3000
 
-## License
-MIT 
+# Database Settings (PostgreSQL)
+DB_TYPE=postgres
+DB_HOST=postgres
+DB_PORT=5432
+DB_NAME=go_next
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_SSLMODE=disable
+
+# JWT Settings
+JWT_SECRET=your-super-secret-jwt-key-here-change-in-production
+JWT_EXPIRATION=24h
+```
+
+### Database Configuration
+
+- **PostgreSQL**: Production-ready database
+- **Auto-migration**: Enabled for all models
+- **Connection Pool**: Optimized settings
+- **SSL**: Disabled for development
+
+### Volumes
+
+- `.:/app` - Source code mount
+- `backend_data:/app/data` - Persistent data
+- `./log:/app/log` - Log files
+- `./storage:/app/storage` - File storage
+- `./data:/app/data` - Database directory
+- `postgres_data:/var/lib/postgresql/data` - PostgreSQL data
+
+## 🏥 Health Checks
+
+### Backend Health Check
+```bash
+curl http://localhost:8080/health
+```
+
+Expected response:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-01-01T00:00:00Z",
+  "version": "1.0.0"
+}
+```
+
+### PostgreSQL Health Check
+```bash
+docker-compose exec postgres pg_isready -U postgres -d go_next
+```
+
+## 🔍 API Endpoints
+
+- `GET /health` - Health check
+- `GET /swagger/*` - API documentation (Swagger)
+- `GET /api/*` - API endpoints
+
+## 🛠️ Development
+
+### Available Makefile Commands
+
+```bash
+# Development
+make run          # Run backend (go run main.go)
+make server       # Run backend server (go run main.go server)
+make test         # Run tests
+make swag         # Generate Swagger docs
+
+# Docker Compose
+make up           # Start backend with PostgreSQL
+make down         # Stop services
+make build        # Build backend service
+make logs         # Show logs
+make restart      # Restart services
+make status       # Show service status
+
+# Legacy
+make docker       # Start with docker-compose up --build
+make server-bat   # Run server (batch file equivalent)
+make server-ps    # Run server (PowerShell equivalent)
+
+# Cleanup
+make clean        # Clean up Docker and docs
+make help         # Show all commands
+```
+
+### Hot Reload
+
+The backend service uses `go run` for development with hot reload capabilities.
+
+### Database Access
+
+Connect to PostgreSQL:
+```bash
+# Using docker-compose
+docker-compose exec postgres psql -U postgres -d go_next
+
+# Using external client
+psql -h localhost -p 5432 -U postgres -d go_next
+```
+
+### Logs
+
+View real-time logs:
+```bash
+# All services
+make logs
+
+# Backend only
+docker-compose logs -f backend
+
+# PostgreSQL only
+docker-compose logs -f postgres
+```
+
+## 🔒 Security Notes
+
+1. **Database Password**: Change default password in production
+2. **JWT Secret**: Use strong secret in production
+3. **SSL**: Enable SSL for production database
+4. **Environment**: Set `APP_ENV=production` for production
+
+## 📊 Resource Limits
+
+### Backend
+- **Memory**: 2GB limit, 1GB reservation
+- **CPU**: 1.0 limit, 0.5 reservation
+
+### PostgreSQL
+- **Memory**: 1GB limit, 512MB reservation
+- **CPU**: 0.5 limit, 0.25 reservation
+
+## 🚨 Troubleshooting
+
+### Service Won't Start
+1. Check logs: `make logs`
+2. Verify Docker is running
+3. Check port availability: `netstat -an | findstr 8080`
+
+### Database Issues
+1. Check PostgreSQL logs: `docker-compose logs postgres`
+2. Verify database connection: `docker-compose exec postgres pg_isready`
+3. Check environment variables
+
+### Build Issues
+1. Check Docker build context
+2. Verify Go dependencies
+3. Check memory limits
+
+## 📝 Example Usage
+
+```bash
+# Start development environment
+make up
+
+# Test the API
+curl http://localhost:8080/health
+
+# Check database
+docker-compose exec postgres psql -U postgres -d go_next -c "SELECT version();"
+
+# View logs
+make logs
+
+# Stop when done
+make down
+```
+
+## 🎯 Benefits
+
+- **Production Ready**: PostgreSQL for robust data storage
+- **Development Friendly**: Hot reload and debugging
+- **Isolated**: Custom network and volumes
+- **Scalable**: Easy to extend with additional services
+- **Reliable**: Health checks and restart policies
+- **Unified Commands**: All operations through Makefile 

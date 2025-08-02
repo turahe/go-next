@@ -1,12 +1,12 @@
 package config
 
 import (
+	"go-next/pkg/email"
+	"go-next/pkg/redis"
+	"go-next/pkg/storage"
 	"os"
 	"strconv"
 	"sync"
-	"wordpress-go-next/backend/pkg/email"
-	"wordpress-go-next/backend/pkg/redis"
-	"wordpress-go-next/backend/pkg/storage"
 
 	"github.com/joho/godotenv"
 )
@@ -58,30 +58,49 @@ var (
 )
 
 func LoadConfig() {
-	godotenv.Load()
+	// Load environment variables from .env files
+	// Try to load from multiple possible locations
+	envFiles := []string{
+		".env",
+		"../.env",
+		"../../.env",
+		".env.dev",
+		"../.env.dev",
+		"../../.env.dev",
+		".env.prod",
+		"../.env.prod",
+		"../../.env.prod",
+	}
+
+	for _, envFile := range envFiles {
+		if err := godotenv.Load(envFile); err == nil {
+			break
+		}
+	}
+
 	config = &Configuration{
 		Database: DatabaseConfig{
-			Driver:   os.Getenv("DB_TYPE"),
-			Host:     os.Getenv("DB_HOST"),
-			Port:     os.Getenv("DB_PORT"),
-			Username: os.Getenv("DB_USER"),
-			Password: os.Getenv("DB_PASSWORD"),
-			Dbname:   os.Getenv("DB_NAME"),
+			Driver:   getEnvWithDefault("DB_TYPE", "sqlite"),
+			Host:     getEnvWithDefault("DB_HOST", "localhost"),
+			Port:     getEnvWithDefault("DB_PORT", "5432"),
+			Username: getEnvWithDefault("DB_USER", "wordpress_user"),
+			Password: getEnvWithDefault("DB_PASSWORD", "wordpress_password"),
+			Dbname:   getEnvWithDefault("DB_NAME", "go_next"),
 			Logmode:  os.Getenv("DB_LOGMODE") == "true",
-			Sslmode:  os.Getenv("DB_SSLMODE") == "true",
+			Sslmode:  os.Getenv("DB_SSLMODE") == "require",
 		},
-		Port:      os.Getenv("PORT"),
-		JwtSecret: os.Getenv("JWT_SECRET"),
+		Port:      getEnvWithDefault("PORT", "8080"),
+		JwtSecret: getEnvWithDefault("JWT_SECRET", "your-super-secret-jwt-key-here"),
 		SMTP: email.SMTPConfig{
-			Host:     os.Getenv("SMTP_HOST"),
-			Port:     getEnvAsInt("SMTP_PORT", 587),
-			Username: os.Getenv("SMTP_USER"),
-			Password: os.Getenv("SMTP_PASS"),
-			From:     os.Getenv("SMTP_FROM"),
+			Host:     getEnvWithDefault("MAIL_HOST", "localhost"),
+			Port:     getEnvAsInt("MAIL_PORT", 1025),
+			Username: getEnvWithDefault("MAIL_USERNAME", ""),
+			Password: getEnvWithDefault("MAIL_PASSWORD", ""),
+			From:     getEnvWithDefault("MAIL_FROM", "noreply@example.com"),
 		},
 		Redis: redis.RedisConfig{
-			Addr:     os.Getenv("REDIS_ADDR"),
-			Password: os.Getenv("REDIS_PASSWORD"),
+			Addr:     getEnvWithDefault("REDIS_HOST", "localhost") + ":" + getEnvWithDefault("REDIS_PORT", "6379"),
+			Password: getEnvWithDefault("REDIS_PASSWORD", "redis_password"),
 			DB:       getEnvAsInt("REDIS_DB", 0),
 		},
 		Storage: storage.StorageConfig{
@@ -99,6 +118,13 @@ func LoadConfig() {
 			Session: getEnvOrDefault("WHATSAPP_SESSION", "default"),
 		},
 	}
+}
+
+func getEnvWithDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
 func getEnvAsInt(name string, defaultVal int) int {

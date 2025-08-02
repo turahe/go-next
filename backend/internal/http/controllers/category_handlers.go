@@ -1,18 +1,16 @@
 package controllers
 
 import (
-	"context"
-	"fmt"
+	"go-next/internal/http/requests"
+	"go-next/internal/http/responses"
 	"net/http"
-	"strconv"
-	"wordpress-go-next/backend/internal/http/requests"
 
-	"wordpress-go-next/backend/internal/http/dto"
-	"wordpress-go-next/backend/internal/http/responses"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/services"
+	"go-next/internal/models"
+	"go-next/internal/services"
+	"go-next/pkg/database"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type CategoryHandler interface {
@@ -38,46 +36,54 @@ func NewCategoryHandler(categoryService services.CategoryService, mediaService s
 
 // GetCategories godoc
 // @Summary      List categories
-// @Description  Get categories with pagination and optional search
+// @Description  Get all categories with pagination
 // @Tags         categories
 // @Produce      json
-// @Param        page     query     int     false  "Page number"  default(1)
-// @Param        perPage  query     int     false  "Items per page"  default(10)
-// @Param        search   query     string  false  "Search keyword"
-// @Success      200  {object}  responses.PaginationResponse
-// @Failure      500  {object}  map[string]string
+// @Param        page      query     int    false "Page number"
+// @Param        per_page  query     int    false "Items per page"
+// @Param        search    query     string false "Search term"
+// @Param        parent    query     string false "Parent category ID filter"
+// @Success      200       {object}  responses.LaravelPaginationResponse
+// @Failure      500       {object}  map[string]string
 // @Router       /categories [get]
 func (h *categoryHandler) GetCategories(c *gin.Context) {
-	pagination, err := requests.ParsePaginationFromQuery(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, responses.CommonResponse{
-			ResponseCode:    http.StatusBadRequest,
-			ResponseMessage: "Invalid pagination parameters",
-		})
+	params := responses.ParsePaginationParams(c)
+	search := c.Query("search")
+	parentID := c.Query("parent")
+
+	offset := (params.Page - 1) * params.PerPage
+
+	var categories []models.Category
+	var total int64
+
+	query := database.DB.Model(&models.Category{})
+
+	// Apply search filter
+	if search != "" {
+		query = query.Where("name ILIKE ? OR description ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	// Apply parent filter
+	if parentID != "" {
+		if parsedID, err := uuid.Parse(parentID); err == nil {
+			query = query.Where("parent_id = ?", parsedID)
+		}
+	}
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		responses.SendError(c, http.StatusInternalServerError, "Failed to count categories")
 		return
 	}
 
-	result, err := h.CategoryService.GetCategoriesWithPagination(context.Background(), pagination.Page, pagination.PerPage, pagination.Search)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
-			ResponseCode:    http.StatusInternalServerError,
-			ResponseMessage: "Failed to fetch categories",
-		})
+	// Get paginated categories
+	if err := query.Offset(offset).Limit(params.PerPage).Order("record_ordering ASC").Find(&categories).Error; err != nil {
+		responses.SendError(c, http.StatusInternalServerError, "Failed to fetch categories")
 		return
 	}
 
-	categories, ok := result.Data.([]models.Category)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
-			ResponseCode:    http.StatusInternalServerError,
-			ResponseMessage: "Invalid data format",
-		})
-		return
-	}
-	dtos := dto.ToCategoryDTOs(categories)
-	result.Data = dtos
-
-	c.JSON(http.StatusOK, result)
+	// Send Laravel-style pagination response
+	responses.SendLaravelPaginationWithMessage(c, "Categories retrieved successfully", categories, total, int64(params.Page), int64(params.PerPage))
 }
 
 // GetCategory godoc
@@ -86,32 +92,17 @@ func (h *categoryHandler) GetCategories(c *gin.Context) {
 // @Tags         categories
 // @Produce      json
 // @Param        id   path      int  true  "Category ID"
-// @Success      200  {object}  dto.CategoryDTO
+// @Success      200  {object}  models.Category
 // @Failure      404  {object}  map[string]string
 // @Router       /categories/{id} [get]
 func (h *categoryHandler) GetCategory(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
+	id := c.Param("id")
+	category, err := h.CategoryService.GetCategoryByID(id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, responses.CommonResponse{
-			ResponseCode:    http.StatusBadRequest,
-			ResponseMessage: "Invalid category ID",
-		})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Category not found"})
 		return
 	}
-	category, err := h.CategoryService.GetCategoryByID(context.Background(), id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, responses.CommonResponse{
-			ResponseCode:    http.StatusNotFound,
-			ResponseMessage: "Category not found",
-		})
-		return
-	}
-	c.JSON(http.StatusOK, responses.CommonResponse{
-		ResponseCode:    http.StatusOK,
-		ResponseMessage: "Category fetched successfully",
-		Data:            dto.ToCategoryDTO(category),
-	})
+	c.JSON(http.StatusOK, category)
 }
 
 // CreateCategory godoc
@@ -121,70 +112,46 @@ func (h *categoryHandler) GetCategory(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        category  body      models.Category  true  "Category to create"
-// @Success      201   {object}  dto.CategoryDTO
+// @Success      201   {object}  models.Category
 // @Failure      400   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
 // @Router       /categories [post]
 func (h *categoryHandler) CreateCategory(c *gin.Context) {
 	var reqParams requests.CategoryCreateRequest
 	if err := c.ShouldBind(&reqParams); err != nil {
-		c.JSON(http.StatusBadRequest, responses.CommonResponse{
-			ResponseCode:    http.StatusBadRequest,
-			ResponseMessage: "Invalid request",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
 	category := models.Category{
 		Name:        reqParams.Name,
 		Description: reqParams.Description,
 	}
-	if reqParams.ParentID > 0 {
-		u := uint64(reqParams.ParentID)
-		category.ParentID = &u
+	if reqParams.ParentID != nil {
+		category.ParentID = reqParams.ParentID
 	}
 	file, fileHeader, err := c.Request.FormFile("image")
 	if err == nil && file != nil && fileHeader != nil {
-		media, err := h.MediaService.UploadAndSaveMedia(context.Background(), file, fileHeader, nil)
+		media, err := h.MediaService.UploadAndSaveMedia(file, fileHeader, nil)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, responses.CommonResponse{
-				ResponseCode:    http.StatusInternalServerError,
-				ResponseMessage: "Failed to upload image",
-			})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
 			return
 		}
-		if err := h.CategoryService.CreateCategory(context.Background(), &category); err != nil {
-			c.JSON(http.StatusInternalServerError, responses.CommonResponse{
-				ResponseCode:    http.StatusInternalServerError,
-				ResponseMessage: "Failed to create category",
-			})
+		if err := h.CategoryService.CreateCategory(&category); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category"})
 			return
 		}
-		if err := h.MediaService.AssociateMedia(context.Background(), media.ID, category.ID, "categories", "image"); err != nil {
-			c.JSON(http.StatusInternalServerError, responses.CommonResponse{
-				ResponseCode:    http.StatusInternalServerError,
-				ResponseMessage: "Failed to associate image with category",
-			})
+		if err := h.MediaService.AssociateMedia(media.ID, category.ID, "categories", "image"); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to associate image with category"})
 			return
 		}
-		c.JSON(http.StatusCreated, responses.CommonResponse{
-			ResponseCode:    http.StatusCreated,
-			ResponseMessage: "Category created successfully",
-			Data:            dto.ToCategoryDTO(&category),
-		})
+		c.JSON(http.StatusCreated, category)
 		return
 	}
-	if err := h.CategoryService.CreateCategory(context.Background(), &category); err != nil {
-		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
-			ResponseCode:    http.StatusInternalServerError,
-			ResponseMessage: "Failed to create category",
-		})
+	if err := h.CategoryService.CreateCategory(&category); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category"})
 		return
 	}
-	c.JSON(http.StatusCreated, responses.CommonResponse{
-		ResponseCode:    http.StatusCreated,
-		ResponseMessage: "Category created successfully",
-		Data:            dto.ToCategoryDTO(&category),
-	})
+	c.JSON(http.StatusCreated, category)
 }
 
 // UpdateCategory godoc
@@ -195,49 +162,28 @@ func (h *categoryHandler) CreateCategory(c *gin.Context) {
 // @Produce      json
 // @Param        id        path      int             true  "Category ID"
 // @Param        category  body      models.Category true  "Category to update"
-// @Success      200   {object}  dto.CategoryDTO
+// @Success      200   {object}  models.Category
 // @Failure      400   {object}  map[string]string
 // @Failure      404   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
 // @Router       /categories/{id} [put]
 func (h *categoryHandler) UpdateCategory(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, responses.CommonResponse{
-			ResponseCode:    http.StatusBadRequest,
-			ResponseMessage: "Invalid category ID",
-		})
-		return
-	}
+	id := c.Param("id")
 	var requestBody requests.CategoryUpdateRequest
-	category, err := h.CategoryService.GetCategoryByID(context.Background(), id)
+	category, err := h.CategoryService.GetCategoryByID(id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, responses.CommonResponse{
-			ResponseCode:    http.StatusNotFound,
-			ResponseMessage: "Category not found",
-		})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Category not found"})
 		return
 	}
 	if err := c.ShouldBindJSON(requestBody); err != nil {
-		c.JSON(http.StatusBadRequest, responses.CommonResponse{
-			ResponseCode:    http.StatusBadRequest,
-			ResponseMessage: "Invalid request",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	if err := h.CategoryService.UpdateCategory(context.Background(), category); err != nil {
-		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
-			ResponseCode:    http.StatusInternalServerError,
-			ResponseMessage: "Failed to update category",
-		})
+	if err := h.CategoryService.UpdateCategory(category); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update category"})
 		return
 	}
-	c.JSON(http.StatusOK, responses.CommonResponse{
-		ResponseCode:    http.StatusOK,
-		ResponseMessage: "Category updated successfully",
-		Data:            dto.ToCategoryDTO(category),
-	})
+	c.JSON(http.StatusOK, category)
 }
 
 // DeleteCategory godoc
@@ -249,13 +195,8 @@ func (h *categoryHandler) UpdateCategory(c *gin.Context) {
 // @Failure      500  {object}  map[string]string
 // @Router       /categories/{id} [delete]
 func (h *categoryHandler) DeleteCategory(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
-		return
-	}
-	if err := h.CategoryService.DeleteCategory(context.Background(), id); err != nil {
+	id := c.Param("id")
+	if err := h.CategoryService.DeleteCategory(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete category"})
 		return
 	}
@@ -280,14 +221,13 @@ func (h *categoryHandler) CreateCategoryNested(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	var parentID *uint64
+	var parentID *uuid.UUID
 	if pid := c.Query("parent_id"); pid != "" {
-		var parsed uint64
-		if _, err := fmt.Sscan(pid, &parsed); err == nil {
+		if parsed, err := uuid.Parse(pid); err == nil {
 			parentID = &parsed
 		}
 	}
-	if err := h.CategoryService.CreateNested(context.Background(), &category, parentID); err != nil {
+	if err := h.CategoryService.CreateNested(&category, parentID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category (nested)"})
 		return
 	}
@@ -307,19 +247,18 @@ func (h *categoryHandler) CreateCategoryNested(c *gin.Context) {
 // @Failure      500   {object}  map[string]string
 // @Router       /categories/{id}/move [post]
 func (h *categoryHandler) MoveCategoryNested(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
 		return
 	}
-	var parentID *uint64
+	var parentID *uuid.UUID
 	if pid := c.Query("parent_id"); pid != "" {
-		var parsed uint64
-		if _, err := fmt.Sscan(pid, &parsed); err == nil {
+		if parsed, err := uuid.Parse(pid); err == nil {
 			parentID = &parsed
 		}
 	}
-	if err := h.CategoryService.MoveNested(context.Background(), id, parentID); err != nil {
+	if err := h.CategoryService.MoveNested(id, parentID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move category (nested)"})
 		return
 	}
@@ -335,12 +274,12 @@ func (h *categoryHandler) MoveCategoryNested(c *gin.Context) {
 // @Failure      500  {object}  map[string]string
 // @Router       /categories/{id}/nested [delete]
 func (h *categoryHandler) DeleteCategoryNested(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
 		return
 	}
-	if err := h.CategoryService.DeleteNested(context.Background(), id); err != nil {
+	if err := h.CategoryService.DeleteNested(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete category (nested)"})
 		return
 	}
@@ -357,12 +296,12 @@ func (h *categoryHandler) DeleteCategoryNested(c *gin.Context) {
 // @Failure      404  {object}  map[string]string
 // @Router       /categories/{id}/children [get]
 func (h *categoryHandler) GetChildrenCategories(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
 		return
 	}
-	children, err := h.CategoryService.GetChildrenCategories(context.Background(), id)
+	children, err := h.CategoryService.GetChildrenCategories(id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch children"})
 		return

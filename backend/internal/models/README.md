@@ -1,284 +1,386 @@
-# Models Optimization Summary
-
-This document outlines the comprehensive optimizations made to all models in the `backend/internal/models` directory.
+# Go Next - Database Models Documentation
 
 ## Overview
 
-All models have been optimized for:
-- **Performance**: Better database indexes and constraints
-- **Maintainability**: Consistent structure and reduced code duplication
-- **Validation**: Comprehensive input validation and data integrity
-- **Usability**: Helper methods and improved relationships
-- **Security**: Better field constraints and data sanitization
+This document describes the optimized database models for the Go Next backend application. All models have been refactored to improve performance, maintainability, and consistency.
 
 ## Base Models
 
-### Base Struct
-- **Location**: `base.go`
-- **Purpose**: Common fields and methods for all models
-- **Features**:
-  - Automatic timestamp management
-  - Soft delete support
-  - Utility methods for age and modification tracking
-  - JSON serialization support
+### BaseModel
+Common fields shared across all models:
+- `ID`: Primary key with auto-increment
+- `CreatedAt`: Timestamp when record was created (auto-indexed)
+- `UpdatedAt`: Timestamp when record was last updated
+- `DeletedAt`: Soft delete timestamp (auto-indexed)
 
-### BaseWithUser Struct
-- **Purpose**: Models that track user actions
-- **Features**:
-  - Inherits from Base
-  - CreatedBy, UpdatedBy, DeletedBy fields
-  - Proper indexing for user tracking
+### BaseModelWithUser
+Extends BaseModel with user tracking fields:
+- `CreatedBy`: User ID who created the record (indexed)
+- `UpdatedBy`: User ID who last updated the record (indexed)
+- `DeletedBy`: User ID who deleted the record (indexed)
 
-### BaseWithHierarchy Struct
-- **Purpose**: Hierarchical models (nested sets)
-- **Features**:
-  - Inherits from Base
-  - RecordLeft, RecordRight, RecordDept, RecordOrdering, ParentID fields
-  - Optimized for tree structure queries
+### BaseModelWithOrdering
+Extends BaseModel with hierarchical ordering support:
+- `RecordLeft`: Left boundary for nested set model
+- `RecordRight`: Right boundary for nested set model
+- `RecordDept`: Depth level in hierarchy
+- `RecordOrdering`: Sort order within siblings
+- `ParentID`: Parent record ID for hierarchical relationships
 
-## Model Optimizations
+## Core Models
 
-### 1. User Model (`user.go`)
-**Optimizations:**
-- ✅ Uses Base struct for consistency
-- ✅ Improved field constraints (size limits, unique indexes)
-- ✅ Enhanced validation (email format, password strength)
-- ✅ Data normalization (lowercase email/username)
-- ✅ Better password handling with bcrypt
-- ✅ Role management methods
-- ✅ Verification status tracking
-- ✅ Last login tracking
+### User
+**Table**: `users`
 
-**New Features:**
-- `HasRole()`, `HasAnyRole()` methods
-- `MarkEmailVerified()`, `MarkPhoneVerified()` methods
-- `UpdateLastLogin()` method
-- `IsEmailVerified()`, `IsPhoneVerified()` methods
+Represents system users with authentication and profile information.
 
-### 2. Role Model (`role.go`)
-**Optimizations:**
-- ✅ Uses Base struct
-- ✅ Improved field constraints
-- ✅ Enhanced validation
-- ✅ System role detection
-- ✅ Active status tracking
+**Key Features**:
+- Email and phone verification tracking
+- Password hashing with bcrypt
+- Role-based access control
+- Activity status tracking
+- Last login tracking
 
-**New Features:**
-- `IsSystemRole()` method
-- Better description field support
+**Optimizations**:
+- Unique indexes on username, email, and phone
+- Check constraints for username format
+- Proper field size limits
+- Hidden password hash from JSON responses
 
-### 3. Post Model (`post.go`)
-**Optimizations:**
-- ✅ Uses BaseWithUser struct
-- ✅ Automatic slug generation
-- ✅ Excerpt generation
-- ✅ Status management (draft, published, archived)
-- ✅ Better content validation
-- ✅ Improved relationships
+**Methods**:
+- `CheckPassword(password)`: Verify password against hash
+- `HashPassword(password)`: Hash and store password
+- `IsEmailVerified()`: Check email verification status
+- `MarkEmailVerified()`: Mark email as verified
+- `UpdateLastLogin()`: Update last login timestamp
 
-**New Features:**
-- `generateSlug()` method
-- `generateExcerpt()` method
-- `IsPublished()`, `IsDraft()`, `IsArchived()` methods
-- `Publish()`, `Archive()` methods
-- `GetCommentCount()` method
+### Role
+**Table**: `roles`
 
-### 4. Category Model (`category.go`)
-**Optimizations:**
-- ✅ Uses BaseWithHierarchy struct
-- ✅ Automatic slug generation
-- ✅ Hierarchical relationship support
-- ✅ Better validation
-- ✅ Active status tracking
+Represents user roles for access control.
 
-**New Features:**
-- `generateSlug()` method
-- `IsRoot()`, `IsLeaf()` methods
-- `GetDepth()` method
-- `GetPostCount()`, `GetChildCount()` methods
-- `HasChildren()` method
-- `GetFullPath()` method
+**Key Features**:
+- Role name and description
+- Active/inactive status
+- Many-to-many relationship with users
 
-### 5. Comment Model (`comment.go`)
-**Optimizations:**
-- ✅ Uses BaseWithHierarchy struct
-- ✅ Status management (pending, approved, rejected)
-- ✅ Content validation and cleaning
-- ✅ Hierarchical comment support
-- ✅ Better relationships
+**Optimizations**:
+- Unique index on name
+- Proper field size limits
+- Active status tracking
 
-**New Features:**
-- `IsRoot()`, `IsReply()` methods
-- `IsApproved()`, `IsPending()`, `IsRejected()` methods
-- `Approve()`, `Reject()` methods
-- `GetDepth()` method
-- `GetReplyCount()`, `HasReplies()` methods
-- `GetWordCount()` method
+### Post
+**Table**: `posts`
 
-### 6. Media Model (`media.go`)
-**Optimizations:**
-- ✅ Uses BaseWithUser struct
-- ✅ UUID generation
-- ✅ File type detection
-- ✅ Size and dimension tracking
-- ✅ Storage path management
-- ✅ Better validation
+Represents blog posts or articles.
 
-**New Features:**
-- `GetFileExtension()` method
-- `IsImage()`, `IsVideo()`, `IsAudio()`, `IsDocument()` methods
-- `GetFileSizeInMB()`, `GetFileSizeInKB()` methods
-- `GetAspectRatio()` method
-- `GetDurationInMinutes()` method
-- `IsPublic()` method
-- `GetStoragePath()` method
+**Key Features**:
+- Content management with drafts, published, and archived states
+- SEO-friendly slugs
+- View count tracking
+- Public/private visibility
+- Category association
 
-### 7. Token Models (`token.go`, `refresh_token.go`)
-**Optimizations:**
-- ✅ Uses Base struct
-- ✅ Better field constraints
-- ✅ Token validation
-- ✅ Expiration tracking
-- ✅ Revocation support
+**Optimizations**:
+- Unique index on slug
+- Indexes on status and visibility
+- Proper field size limits
+- Automatic status management
 
-**New Features:**
-- `IsExpired()`, `IsValid()` methods
-- `Revoke()` method
-- `GetTimeUntilExpiry()` method
-- Better JWT key management
+**Methods**:
+- `IncrementViewCount()`: Increase view count
+- `IsPublished()`: Check if post is published
+- `IsPublic()`: Check if post is publicly visible
 
-### 8. VerificationToken Model (`verification_token.go`)
-**Optimizations:**
-- ✅ Uses Base struct
-- ✅ Type validation
-- ✅ Expiration tracking
-- ✅ Usage tracking
+### Category
+**Table**: `categories`
 
-**New Features:**
-- `IsExpired()`, `IsValid()` methods
-- `MarkAsUsed()` method
-- `GetTimeUntilExpiry()` method
-- `IsEmailVerification()`, `IsPhoneVerification()`, `IsPasswordReset()` methods
+Represents content categories with hierarchical support.
 
-### 9. Content Model (`content.go`)
-**Optimizations:**
-- ✅ Uses Base struct
-- ✅ Polymorphic relationships
-- ✅ Content type validation
-- ✅ Data cleaning
+**Key Features**:
+- Hierarchical structure (parent-child relationships)
+- SEO-friendly slugs
+- Active/inactive status
+- Sort ordering
 
-**New Features:**
-- `IsText()`, `IsHTML()`, `IsMarkdown()`, `IsJSON()`, `IsXML()` methods
-- `GetWordCount()`, `GetCharacterCount()`, `GetLineCount()` methods
+**Optimizations**:
+- Unique index on slug
+- Indexes on active status and sort order
+- Nested set model support for efficient queries
 
-### 10. Mediable Model (`mediable.go`)
-**Optimizations:**
-- ✅ Uses Base struct
-- ✅ Polymorphic relationships
-- ✅ Group validation
-- ✅ Ordering support
+**Methods**:
+- `IsRoot()`: Check if category is top-level
+- `HasChildren()`: Check if category has subcategories
+- `GetDepth()`: Get hierarchy depth level
 
-**New Features:**
-- `IsFeatured()`, `IsGallery()`, `IsThumbnail()`, `IsAvatar()`, `IsBanner()`, `IsLogo()` methods
-- `HasGroup()` method
+### Comment
+**Table**: `comments`
 
-## Database Optimizations
+Represents user comments on posts with threading support.
 
-### Indexes
-- **Primary Keys**: All models use auto-incrementing primary keys
-- **Unique Indexes**: Username, email, slugs, tokens
-- **Foreign Key Indexes**: All relationship fields
-- **Status Indexes**: Active, published, approved status fields
-- **Timestamp Indexes**: CreatedAt, UpdatedAt, ExpiresAt fields
+**Key Features**:
+- Approval workflow (pending, approved, rejected)
+- Threaded comments (parent-child relationships)
+- Public/private visibility
+- Media attachments
 
-### Constraints
-- **NOT NULL**: Required fields properly constrained
-- **Size Limits**: String fields have appropriate size limits
-- **Check Constraints**: Numeric fields have value constraints
-- **Foreign Key Constraints**: Proper CASCADE and RESTRICT rules
+**Optimizations**:
+- Indexes on status and visibility
+- Nested set model for efficient threading queries
+- Proper foreign key constraints
 
-### Relationships
-- **CASCADE Delete**: Child records deleted when parent is deleted
-- **RESTRICT Delete**: Prevents deletion of referenced records
-- **SET NULL**: User tracking fields set to null when user is deleted
+**Methods**:
+- `IsApproved()`: Check approval status
+- `IsRejected()`: Check rejection status
+- `IsPending()`: Check pending status
+- `IsRoot()`: Check if comment is top-level
+- `HasChildren()`: Check if comment has replies
 
-## Validation Improvements
+### Media
+**Table**: `media`
 
-### Input Validation
-- **Field Length**: Appropriate min/max lengths for all string fields
-- **Format Validation**: Email, phone number, UUID validation
-- **Value Ranges**: Numeric fields have proper constraints
-- **Enum Values**: Status fields validate against allowed values
+Represents media files with polymorphic relationships.
 
-### Data Sanitization
-- **String Trimming**: Whitespace removal from string fields
-- **Case Normalization**: Email and username converted to lowercase
-- **Content Cleaning**: HTML and special character handling
+**Key Features**:
+- UUID-based identification
+- Multiple storage backends (local, S3, GCS)
+- File metadata (size, dimensions, duration)
+- Public/private visibility
+- Polymorphic relationships
 
-## Performance Benefits
+**Optimizations**:
+- Unique index on UUID
+- Indexes on hash and visibility
+- Proper field size limits
+- File type detection methods
 
-1. **Reduced Code Duplication**: Base structs eliminate repetitive code
-2. **Better Queries**: Optimized indexes improve query performance
-3. **Efficient Relationships**: Proper foreign key constraints
-4. **Validation at Model Level**: Reduces invalid data in database
-5. **Automatic Timestamps**: Consistent time tracking across models
+**Methods**:
+- `IsImage()`: Check if file is an image
+- `IsVideo()`: Check if file is a video
+- `IsAudio()`: Check if file is audio
+- `IsDocument()`: Check if file is a document
+- `GetFileSize()`: Get human-readable file size
+- `GetDimensions()`: Get image dimensions
 
-## Security Improvements
+### Content
+**Table**: `contents`
 
-1. **Password Hashing**: Secure bcrypt implementation
-2. **Token Management**: Proper expiration and revocation
-3. **Input Validation**: Prevents malicious data injection
-4. **Access Control**: Role-based permission methods
-5. **Data Sanitization**: Prevents XSS and injection attacks
+Represents additional content for polymorphic models.
+
+**Key Features**:
+- Polymorphic relationships
+- Multiple content types (text, HTML, Markdown, JSON)
+- Sort ordering
+
+**Optimizations**:
+- Indexes on model type and sort order
+- Proper field size limits
+- Content type validation
+
+**Methods**:
+- `IsHTML()`: Check if content is HTML
+- `IsMarkdown()`: Check if content is Markdown
+- `IsJSON()`: Check if content is JSON
+
+### Mediable
+**Table**: `mediables`
+
+Polymorphic relationship table between Media and other models.
+
+**Key Features**:
+- Polymorphic associations
+- Grouping support
+- Sort ordering
+
+**Optimizations**:
+- Composite primary key
+- Indexes on all key fields
+- Proper field size limits
+
+**Methods**:
+- `IsDefaultGroup()`: Check if in default group
+- `GetGroup()`: Get group name
+
+## Authentication Models
+
+### Token
+**Table**: `tokens`
+
+Represents access tokens for API authentication.
+
+**Key Features**:
+- Token and refresh token storage
+- Expiration tracking
+- Client secret for additional security
+- Usage tracking
+
+**Optimizations**:
+- Unique index on token
+- Indexes on user ID and expiration
+- Proper field size limits
+- IPv6-compatible IP address storage
+
+**Methods**:
+- `IsExpired()`: Check token expiration
+- `IsValid()`: Check if token is active and not expired
+- `UpdateLastUsed()`: Update last usage timestamp
+
+### JWTKey
+**Table**: `jwt_keys`
+
+Stores per-user/client JWT signing keys.
+
+**Key Features**:
+- Client-specific keys
+- Configurable token expiration
+- Active/inactive status
+
+**Optimizations**:
+- Unique index on client key
+- Index on user ID
+- Proper field size limits
+- Expiration validation
+
+**Methods**:
+- `IsValid()`: Check if key is active
+
+### RefreshToken
+**Table**: `refresh_tokens`
+
+Legacy refresh token storage (maintained for backward compatibility).
+
+**Key Features**:
+- Refresh token storage
+- Expiration tracking
+- Usage tracking
+
+**Optimizations**:
+- Unique index on token
+- Indexes on user ID and expiration
+- IPv6-compatible IP address storage
+
+**Methods**:
+- `IsExpired()`: Check token expiration
+- `IsValid()`: Check if token is active and not expired
+
+### VerificationToken
+**Table**: `verification_tokens`
+
+Represents verification tokens for user actions.
+
+**Key Features**:
+- Multiple token types (email, phone, password reset)
+- Expiration tracking
+- Usage tracking
+- IP and user agent logging
+
+**Optimizations**:
+- Unique index on token
+- Indexes on user ID, type, and expiration
+- Proper field size limits
+- Type validation
+
+**Methods**:
+- `IsExpired()`: Check token expiration
+- `IsValid()`: Check if token is valid and not used
+- `MarkAsUsed()`: Mark token as used
+- `IsEmailVerification()`: Check if email verification token
+- `IsPhoneVerification()`: Check if phone verification token
+- `IsPasswordReset()`: Check if password reset token
+
+## Notification Models
+
+### Notification
+**Table**: `notifications`
+
+Represents user notifications.
+
+**Key Features**:
+- Multiple notification types (success, error, warning, info)
+- Priority levels (normal, high, urgent)
+- Read/unread status
+- JSON data for additional context
+
+**Optimizations**:
+- Indexes on user ID, type, read status, and priority
+- Proper field size limits
+- Type and priority validation
+
+**Methods**:
+- `MarkAsRead()`: Mark notification as read
+- `MarkAsUnread()`: Mark notification as unread
+- `IsRead()`: Check read status
+- `IsHighPriority()`: Check if high priority
+- `IsUrgent()`: Check if urgent priority
+
+## Key Optimizations Made
+
+### 1. Base Model Inheritance
+- Eliminated code duplication
+- Consistent timestamp handling
+- Standardized soft delete support
+
+### 2. Database Indexes
+- Added strategic indexes for performance
+- Unique constraints where appropriate
+- Composite indexes for common queries
+
+### 3. Field Constraints
+- Proper field size limits
+- Check constraints for data validation
+- Not null constraints where required
+
+### 4. Validation Tags
+- Added comprehensive validation rules
+- Type checking for enums
+- Length and format validation
+
+### 5. JSON Tags
+- Consistent JSON field naming
+- Hidden sensitive fields (e.g., password hash)
+- Optional field handling
+
+### 6. Relationship Constraints
+- Proper foreign key constraints
+- Cascade delete rules
+- Restrict delete rules where appropriate
+
+### 7. Helper Methods
+- Business logic encapsulation
+- Status checking methods
+- Utility functions for common operations
+
+### 8. Type Safety
+- Strong typing for enums
+- Consistent data types across models
+- Proper pointer usage for optional fields
 
 ## Migration Notes
 
-When migrating existing data:
-1. **Backup**: Always backup existing data before migration
-2. **Field Mapping**: Map existing fields to new optimized structure
-3. **Index Creation**: Create new indexes after data migration
-4. **Validation**: Test all validation rules with existing data
-5. **Rollback Plan**: Have a rollback strategy ready
+When migrating from the old models to these optimized versions:
 
-## Usage Examples
+1. **Database Schema Changes**:
+   - New indexes will be created
+   - Field size constraints may be added
+   - New fields may be added with defaults
 
-### Creating a User
-```go
-user := &models.User{
-    Username: "john_doe",
-    Email:    "john@example.com",
-}
-user.HashPassword("secure_password")
-db.Create(user)
-```
+2. **Code Changes**:
+   - Update import paths if needed
+   - Review validation rules in handlers
+   - Update any hardcoded field references
 
-### Creating a Post
-```go
-post := &models.Post{
-    Title:      "My First Post",
-    Content:    "This is the content...",
-    CategoryID: 1,
-    CreatedBy:  &userID,
-}
-db.Create(post) // Slug and excerpt generated automatically
-```
+3. **Performance Improvements**:
+   - Query performance should improve with new indexes
+   - Reduced memory usage with proper field sizes
+   - Better caching opportunities with consistent structures
 
-### Managing Comments
-```go
-comment := &models.Comment{
-    Content: "Great post!",
-    UserID:  userID,
-    PostID:  postID,
-}
-db.Create(comment)
-comment.Approve() // Change status to approved
-```
+## Best Practices
 
-## Future Enhancements
-
-1. **Audit Trail**: Add comprehensive audit logging
-2. **Caching**: Implement Redis caching for frequently accessed data
-3. **Search**: Add full-text search capabilities
-4. **API Versioning**: Support for multiple API versions
-5. **Rate Limiting**: Model-level rate limiting
-6. **Soft Delete**: Enhanced soft delete with recovery options 
+1. **Always use the base models** for new entities
+2. **Add indexes** for fields used in WHERE clauses
+3. **Use validation tags** for data integrity
+4. **Implement proper relationships** with constraints
+5. **Add helper methods** for common business logic
+6. **Use soft deletes** for data preservation
+7. **Log user actions** with user tracking fields
+8. **Implement proper error handling** in hooks 

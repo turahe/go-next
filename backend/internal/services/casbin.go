@@ -1,7 +1,7 @@
 package services
 
 import (
-	"wordpress-go-next/backend/pkg/database"
+	"go-next/pkg/database"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"

@@ -11,8 +11,8 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	internal "wordpress-go-next/backend/internal"
-	controllers "wordpress-go-next/backend/internal/http/controllers"
+	internal "go-next/internal"
+	controllers "go-next/internal/http/controllers"
 
 	"github.com/stretchr/testify/assert"
 )

@@ -1,26 +1,30 @@
 package models
 
 import (
-	"errors"
-	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 // Post represents a blog post or article
 type Post struct {
-	BaseWithUser
-	Title      string `gorm:"not null;size:255;index" json:"title" validate:"required,min=3,max=255"`
-	Slug       string `gorm:"uniqueIndex;not null;size:255" json:"slug"`
-	Excerpt    string `gorm:"size:500" json:"excerpt,omitempty"`
-	Status     string `gorm:"default:'draft';index;size:20" json:"status" validate:"oneof=draft published archived"`
-	CategoryID uint   `gorm:"not null;index" json:"category_id" validate:"required"`
+	BaseModelWithUser
+	Title       string     `json:"title" gorm:"not null;size:255" validate:"required,min=1,max=255"`
+	Slug        string     `json:"slug" gorm:"uniqueIndex;not null;size:255" validate:"required,min=1,max=255"`
+	Content     string     `json:"content" gorm:"type:text;not null"`
+	Excerpt     string     `json:"excerpt" gorm:"size:500"`
+	Status      string     `json:"status" gorm:"default:'draft';index" validate:"oneof=draft published archived"`
+	Public      bool       `json:"public" gorm:"default:true;index"`
+	PublishedAt *time.Time `json:"published_at,omitempty" gorm:"index"`
+	ViewCount   int64      `json:"view_count" gorm:"default:0;index"`
+	CategoryID  *uuid.UUID `json:"category_id,omitempty" gorm:"type:uuid;index"`
 
 	// Relationships
-	Category Category  `gorm:"foreignKey:CategoryID;constraint:OnDelete:RESTRICT" json:"category,omitempty"`
-	Comments []Comment `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"comments,omitempty"`
-	Contents []Content `gorm:"foreignKey:ModelID;constraint:OnDelete:CASCADE" json:"contents,omitempty"`
-	Medias   []Media   `gorm:"foreignKey:ModelID;constraint:OnDelete:CASCADE" json:"medias,omitempty"`
+	Category *Category `json:"category,omitempty" gorm:"foreignKey:CategoryID;constraint:OnDelete:SET NULL"`
+	Comments []Comment `json:"comments,omitempty" gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE"`
+	Contents []Content `json:"contents,omitempty" gorm:"polymorphic:Model;polymorphicValue:post;constraint:OnDelete:CASCADE"`
+	Media    []Media   `json:"media,omitempty" gorm:"many2many:mediables;constraint:OnDelete:CASCADE"`
 }
 
 // TableName specifies the table name for Post
@@ -28,132 +32,48 @@ func (Post) TableName() string {
 	return "posts"
 }
 
-// BeforeCreate sets timestamps and validates post data
+// BeforeCreate hook for Post
 func (p *Post) BeforeCreate(tx *gorm.DB) error {
-	if err := p.BaseWithUser.BeforeCreate(tx); err != nil {
-		return err
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
 	}
-
-	// Generate slug if not provided
-	if p.Slug == "" {
-		p.Slug = p.generateSlug()
-	}
-
-	// Set default status
-	if p.Status == "" {
-		p.Status = "draft"
-	}
-
-	// Generate excerpt if not provided
-	if p.Excerpt == "" && len(p.Contents) > 0 {
-		p.Excerpt = p.generateExcerpt()
-	}
-
-	return p.validate()
-}
-
-// BeforeUpdate validates post data before update
-func (p *Post) BeforeUpdate(tx *gorm.DB) error {
-	if err := p.BaseWithUser.BeforeUpdate(tx); err != nil {
-		return err
-	}
-
-	// Generate slug if title changed and slug is empty
-	if p.Slug == "" {
-		p.Slug = p.generateSlug()
-	}
-
-	// Generate excerpt if not provided
-	if p.Excerpt == "" && len(p.Contents) > 0 {
-		p.Excerpt = p.generateExcerpt()
-	}
-
-	return p.validate()
-}
-
-// validate performs validation on post fields
-func (p *Post) validate() error {
-	if len(p.Title) < 3 || len(p.Title) > 255 {
-		return errors.New("title must be between 3 and 255 characters")
-	}
-
-	if p.CategoryID == 0 {
-		return errors.New("category is required")
-	}
-
-	validStatuses := []string{"draft", "published", "archived"}
-	statusValid := false
-	for _, status := range validStatuses {
-		if p.Status == status {
-			statusValid = true
-			break
-		}
-	}
-	if !statusValid {
-		return errors.New("invalid status")
-	}
-
 	return nil
 }
 
-// generateSlug creates a URL-friendly slug from the title
-func (p *Post) generateSlug() string {
-	slug := strings.ToLower(p.Title)
-	slug = strings.ReplaceAll(slug, " ", "-")
-	slug = strings.ReplaceAll(slug, "_", "-")
-	// Remove special characters except hyphens
-	// This is a simplified version - you might want to use a proper slug library
-	return slug
+// BeforeUpdate hook for Post
+func (p *Post) BeforeUpdate(tx *gorm.DB) error {
+	return nil
 }
 
-// generateExcerpt creates a short excerpt from the content
-func (p *Post) generateExcerpt() string {
-	if len(p.Contents) == 0 {
-		return ""
-	}
-	mainContent := p.Contents[0].Content
-	if len(mainContent) <= 150 {
-		return mainContent
-	}
-
-	excerpt := mainContent[:150]
-	if idx := strings.LastIndex(excerpt, "."); idx > 100 {
-		excerpt = excerpt[:idx+1]
-	} else if idx := strings.LastIndex(excerpt, " "); idx > 100 {
-		excerpt = excerpt[:idx] + "..."
-	} else {
-		excerpt += "..."
-	}
-
-	return excerpt
+// IncrementViewCount increments the view count
+func (p *Post) IncrementViewCount() {
+	p.ViewCount++
 }
 
 // IsPublished checks if the post is published
 func (p *Post) IsPublished() bool {
-	return p.Status == "published"
+	return p.Status == "published" && p.PublishedAt != nil
 }
 
-// IsDraft checks if the post is a draft
-func (p *Post) IsDraft() bool {
-	return p.Status == "draft"
+// IsPublic checks if the post is public
+func (p *Post) IsPublic() bool {
+	return p.Public
 }
 
-// IsArchived checks if the post is archived
-func (p *Post) IsArchived() bool {
-	return p.Status == "archived"
-}
-
-// Publish marks the post as published
+// Publish publishes the post
 func (p *Post) Publish() {
 	p.Status = "published"
+	now := time.Now()
+	p.PublishedAt = &now
 }
 
-// Archive marks the post as archived
+// Unpublish unpublishes the post
+func (p *Post) Unpublish() {
+	p.Status = "draft"
+	p.PublishedAt = nil
+}
+
+// Archive archives the post
 func (p *Post) Archive() {
 	p.Status = "archived"
-}
-
-// GetCommentCount returns the number of comments on this post
-func (p *Post) GetCommentCount() int {
-	return len(p.Comments)
 }

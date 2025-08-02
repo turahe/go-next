@@ -1,13 +1,15 @@
 package middleware
 
 import (
+	"go-next/internal/models"
+	"go-next/internal/services"
+	"go-next/pkg/database"
 	"net/http"
 	"strings"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/pkg/database"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 func JWTMiddleware() gin.HandlerFunc {
@@ -23,15 +25,21 @@ func JWTMiddleware() gin.HandlerFunc {
 			if !ok || claims["user_id"] == nil {
 				return nil, jwt.ErrSignatureInvalid
 			}
-			userID, ok := claims["user_id"].(float64)
-			if !ok {
+			if _, ok := claims["user_id"].(string); !ok {
 				return nil, jwt.ErrSignatureInvalid
 			}
-			var jwtKey models.JWTKey
-			if err := database.DB.Where("user_id = ?", uint(userID)).First(&jwtKey).Error; err != nil {
-				return nil, jwt.ErrSignatureInvalid
+
+			// Try to get JWT key from cache first
+			jwtKeys, err := services.TokenCacheSvc.GetActiveJWTKeys()
+			if err != nil || len(jwtKeys) == 0 {
+				// Cache miss, get from database
+				var jwtKey models.JWTKey
+				if err := database.DB.Where("is_active = ?", true).First(&jwtKey).Error; err != nil {
+					return nil, jwt.ErrSignatureInvalid
+				}
+				return []byte(jwtKey.Key), nil
 			}
-			return []byte(jwtKey.SecretKey), nil
+			return []byte(jwtKeys[0].Key), nil
 		})
 		if err != nil || !token.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
@@ -42,7 +50,17 @@ func JWTMiddleware() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
 			return
 		}
-		c.Set("user_id", uint(claims["user_id"].(float64)))
+		userIDStr, ok := claims["user_id"].(string)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID in token"})
+			return
+		}
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID format"})
+			return
+		}
+		c.Set("user_id", userID)
 		c.Next()
 	}
 }

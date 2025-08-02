@@ -1,30 +1,27 @@
 package models
 
 import (
-	"errors"
-	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
 // User represents a user in the system
 type User struct {
-	Base
-	Username      string     `gorm:"uniqueIndex;not null;size:50" json:"username" validate:"required,min=3,max=50,alphanum"`
-	Email         string     `gorm:"uniqueIndex;not null;size:255" json:"email" validate:"required,email"`
-	PasswordHash  string     `gorm:"not null;size:255" json:"-"` // Hidden from JSON
-	Phone         *string    `gorm:"uniqueIndex;size:20" json:"phone,omitempty" validate:"omitempty,len=10"`
-	EmailVerified *time.Time `gorm:"index" json:"email_verified_at,omitempty"`
-	PhoneVerified *time.Time `gorm:"index" json:"phone_verified_at,omitempty"`
-	IsActive      bool       `gorm:"default:true;index" json:"is_active"`
-	LastLoginAt   *time.Time `gorm:"index" json:"last_login_at,omitempty"`
-
-	// Relationships
-	Roles    []Role    `gorm:"many2many:user_roles;constraint:OnDelete:CASCADE" json:"roles,omitempty"`
-	Posts    []Post    `gorm:"foreignKey:CreatedBy;constraint:OnDelete:SET NULL" json:"posts,omitempty"`
-	Comments []Comment `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"comments,omitempty"`
+	BaseModel
+	Username      string     `json:"username" gorm:"uniqueIndex;not null;size:50;check:username ~ '^[a-zA-Z0-9_]+$'" validate:"required,min=3,max=50,alphanum"`
+	Email         string     `json:"email" gorm:"uniqueIndex;not null;size:255" validate:"required,email"`
+	PasswordHash  string     `json:"-" gorm:"not null;size:255"`
+	Phone         string     `json:"phone" gorm:"uniqueIndex;size:20" validate:"omitempty,len=10"`
+	EmailVerified *time.Time `json:"email_verified,omitempty" gorm:"index"`
+	PhoneVerified *time.Time `json:"phone_verified,omitempty" gorm:"index"`
+	IsActive      bool       `json:"is_active" gorm:"default:true;index"`
+	LastLoginAt   *time.Time `json:"last_login_at,omitempty"`
+	Roles         []Role     `json:"roles,omitempty" gorm:"many2many:user_roles;constraint:OnDelete:CASCADE"`
+	Posts         []Post     `json:"posts,omitempty" gorm:"foreignKey:CreatedBy;constraint:OnDelete:SET NULL"`
+	Comments      []Comment  `json:"comments,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 }
 
 // TableName specifies the table name for User
@@ -32,84 +29,49 @@ func (User) TableName() string {
 	return "users"
 }
 
-// BeforeCreate sets timestamps and validates user data
+// BeforeCreate hook for User
 func (u *User) BeforeCreate(tx *gorm.DB) error {
-	if err := u.Base.BeforeCreate(tx); err != nil {
-		return err
+	if u.ID == uuid.Nil {
+		u.ID = uuid.New()
 	}
-
-	// Normalize email and username
-	u.Email = strings.ToLower(strings.TrimSpace(u.Email))
-	u.Username = strings.ToLower(strings.TrimSpace(u.Username))
-
-	// Set default values
-	if u.IsActive == false {
-		u.IsActive = true
-	}
-
-	return u.validate()
-}
-
-// BeforeUpdate validates user data before update
-func (u *User) BeforeUpdate(tx *gorm.DB) error {
-	if err := u.Base.BeforeUpdate(tx); err != nil {
-		return err
-	}
-
-	// Normalize email and username
-	u.Email = strings.ToLower(strings.TrimSpace(u.Email))
-	u.Username = strings.ToLower(strings.TrimSpace(u.Username))
-
-	return u.validate()
-}
-
-// validate performs validation on user fields
-func (u *User) validate() error {
-	if len(u.Username) < 3 || len(u.Username) > 50 {
-		return errors.New("username must be between 3 and 50 characters")
-	}
-
-	if !strings.Contains(u.Email, "@") {
-		return errors.New("invalid email format")
-	}
-
-	if u.Phone != nil && len(*u.Phone) != 10 {
-		return errors.New("phone number must be 10 digits")
-	}
-
 	return nil
 }
 
-// CheckPassword verifies the provided password against the stored hash
-func (u *User) CheckPassword(password string) error {
-	if password == "" {
-		return errors.New("password cannot be empty")
-	}
-	return bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
+// BeforeUpdate hook for User
+func (u *User) BeforeUpdate(tx *gorm.DB) error {
+	return nil
+}
+
+// CheckPassword compares the provided password with the stored hash
+func (u *User) CheckPassword(password string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
+	return err == nil
 }
 
 // HashPassword hashes the provided password and stores it
 func (u *User) HashPassword(password string) error {
-	if password == "" {
-		return errors.New("password cannot be empty")
-	}
-
-	if len(password) < 8 {
-		return errors.New("password must be at least 8 characters long")
-	}
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
-	u.PasswordHash = string(hashedPassword)
+	u.PasswordHash = string(hash)
 	return nil
+}
+
+// IsEmailVerified checks if the user's email is verified
+func (u *User) IsEmailVerified() bool {
+	return u.EmailVerified != nil
 }
 
 // MarkEmailVerified marks the user's email as verified
 func (u *User) MarkEmailVerified() {
 	now := time.Now()
 	u.EmailVerified = &now
+}
+
+// IsPhoneVerified checks if the user's phone is verified
+func (u *User) IsPhoneVerified() bool {
+	return u.PhoneVerified != nil
 }
 
 // MarkPhoneVerified marks the user's phone as verified
@@ -124,50 +86,17 @@ func (u *User) UpdateLastLogin() {
 	u.LastLoginAt = &now
 }
 
-// HasRole checks if the user has a specific role
-func (u *User) HasRole(roleName string) bool {
-	for _, role := range u.Roles {
-		if role.Name == roleName {
-			return true
-		}
-	}
-	return false
+// GetIsActive returns the active status
+func (u *User) GetIsActive() bool {
+	return u.IsActive
 }
 
-// HasAnyRole checks if the user has any of the specified roles
-func (u *User) HasAnyRole(roleNames ...string) bool {
-	for _, roleName := range roleNames {
-		if u.HasRole(roleName) {
-			return true
-		}
-	}
-	return false
+// Activate activates the user
+func (u *User) Activate() {
+	u.IsActive = true
 }
 
-// IsEmailVerified checks if the user's email is verified
-func (u *User) IsEmailVerified() bool {
-	return u.EmailVerified != nil
-}
-
-// IsPhoneVerified checks if the user's phone is verified
-func (u *User) IsPhoneVerified() bool {
-	return u.PhoneVerified != nil
-}
-
-// JWTKey represents a user's JWT secret and expiration
-// Used for per-user JWT signing
-// Table: jwt_keys
-// Example fields: ID, UserID, SecretKey, TokenExpiration
-
-type JWTKey struct {
-	ID              uint64    `gorm:"primaryKey" json:"id"`
-	UserID          uint64    `gorm:"uniqueIndex;not null" json:"user_id"`
-	SecretKey       string    `gorm:"not null;size:255" json:"secret_key"`
-	TokenExpiration int64     `gorm:"not null" json:"token_expiration"` // in seconds
-	CreatedAt       time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updated_at"`
-}
-
-func (JWTKey) TableName() string {
-	return "jwt_keys"
+// Deactivate deactivates the user
+func (u *User) Deactivate() {
+	u.IsActive = false
 }

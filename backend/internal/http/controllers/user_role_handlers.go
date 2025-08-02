@@ -1,12 +1,13 @@
 package controllers
 
 import (
+	"go-next/internal/http/requests"
+	"go-next/internal/models"
+	"go-next/internal/services"
 	"net/http"
-	"wordpress-go-next/backend/internal/http/requests"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type UserRoleHandler interface {
@@ -24,14 +25,14 @@ func NewUserRoleHandler(userRoleService services.UserRoleService) UserRoleHandle
 }
 
 func (h *userRoleHandler) AssignRoleToUser(c *gin.Context) {
-	var input requests.UserRoleAssignmentRequest
+	var input requests.UserRoleAssignmentInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	user := &models.User{}
-	role := &models.Role{Base: models.Base{ID: input.RoleID}}
-	if err := h.UserRoleService.AssignRoleToUser(c.Request.Context(), user, role); err != nil {
+	user := &models.User{BaseModel: models.BaseModel{ID: uuid.Nil}}
+	role := &models.Role{BaseModel: models.BaseModel{ID: input.RoleID}}
+	if err := h.UserRoleService.AssignRoleToUser(user, role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign role"})
 		return
 	}
@@ -39,9 +40,9 @@ func (h *userRoleHandler) AssignRoleToUser(c *gin.Context) {
 }
 
 func (h *userRoleHandler) RemoveRoleFromUser(c *gin.Context) {
-	user := &models.User{}
-	role := &models.Role{}
-	if err := h.UserRoleService.RemoveRoleFromUser(c.Request.Context(), user, role); err != nil {
+	user := &models.User{BaseModel: models.BaseModel{ID: uuid.Nil}}
+	role := &models.Role{BaseModel: models.BaseModel{ID: uuid.Nil}}
+	if err := h.UserRoleService.RemoveRoleFromUser(user, role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove role"})
 		return
 	}
@@ -49,8 +50,8 @@ func (h *userRoleHandler) RemoveRoleFromUser(c *gin.Context) {
 }
 
 func (h *userRoleHandler) ListUserRoles(c *gin.Context) {
-	user := &models.User{}
-	roles, err := h.UserRoleService.ListUserRoles(c.Request.Context(), user)
+	user := &models.User{BaseModel: models.BaseModel{ID: uuid.Nil}}
+	roles, err := h.UserRoleService.ListUserRoles(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list roles"})
 		return

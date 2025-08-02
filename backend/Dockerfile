@@ -1,35 +1,42 @@
-# --- Base builder ---
-FROM golang:1.24-alpine AS base
+# Build stage
+FROM golang:1.24-alpine AS builder
+
+# Install git and ca-certificates (needed for go mod download)
+RUN apk add --no-cache git ca-certificates
+
 WORKDIR /app
-COPY . .
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
 RUN go mod download
 
-# --- Swag docs ---
-FROM base AS swaggen
-RUN go install github.com/swaggo/swag/cmd/swag@latest && /go/bin/swag init
+# Copy source code
+COPY . .
 
-# --- Development stage ---
-FROM swaggen AS dev
-RUN go install github.com/cosmtrek/air@latest
-RUN /go/bin/swag init
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+
+# Final stage
+FROM alpine:latest
+
+# Install ca-certificates for HTTPS requests
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /root/
+
+# Copy the binary from builder stage
+COPY --from=builder /app/main .
+
+# Copy environment file
+COPY .env .
+
+# Create necessary directories
+RUN mkdir -p log storage data
+
+# Expose port
 EXPOSE 8080
-CMD ["/go/bin/air", "server"]
 
-# --- Staging stage (with debug info, no air) ---
-FROM swaggen AS staging
-RUN /go/bin/swag init
-RUN go build -o main .
-EXPOSE 8080
-CMD ["./main", "server"]
-
-# --- Production stage (minimal, static binary) ---
-FROM swaggen AS prod-builder
-RUN /go/bin/swag init
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o main .
-
-FROM alpine:3.20 AS prod
-WORKDIR /app
-COPY --from=prod-builder /app/main ./main
-COPY --from=prod-builder /app/docs ./docs
-EXPOSE 8080
+# Run the binary
 CMD ["./main", "server"] 

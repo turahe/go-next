@@ -3,10 +3,10 @@ package middleware
 import (
 	"net/http"
 	"strings"
-	"wordpress-go-next/backend/pkg/database"
+	"go-next/pkg/database"
 
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/services"
+	"go-next/internal/models"
+	"go-next/internal/services"
 
 	"github.com/gin-gonic/gin"
 )

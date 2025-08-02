@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/go-co-op/gocron/v2"
 	"time"
-	"wordpress-go-next/backend/pkg/logger"
+	"go-next/pkg/logger"
 )
 
 var scheduler gocron.Scheduler

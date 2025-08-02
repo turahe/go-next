@@ -2,10 +2,9 @@ package controllers
 
 import (
 	"net/http"
-	"wordpress-go-next/backend/internal/http/requests"
-	"wordpress-go-next/backend/internal/http/responses"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/services"
+	"go-next/internal/http/requests"
+	"go-next/internal/models"
+	"go-next/internal/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,53 +25,18 @@ func NewRoleHandler(roleService services.RoleService) RoleHandler {
 	return &roleHandler{RoleService: roleService}
 }
 
-// GetRoles godoc
-// @Summary      List roles
-// @Description  Get roles with pagination and optional search
-// @Tags         roles
-// @Produce      json
-// @Param        page     query     int     false  "Page number"  default(1)
-// @Param        perPage  query     int     false  "Items per page"  default(10)
-// @Param        search   query     string  false  "Search keyword"
-// @Success      200  {object}  responses.PaginationResponse
-// @Failure      400  {object}  map[string]string
-// @Failure      500  {object}  map[string]string
-// @Router       /roles [get]
 func (h *roleHandler) GetRoles(c *gin.Context) {
-	pagination, err := requests.ParsePaginationFromQuery(c)
+	roles, err := h.RoleService.GetAllRoles()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, responses.CommonResponse{
-			ResponseCode:    http.StatusBadRequest,
-			ResponseMessage: "Invalid pagination parameters",
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch roles"})
 		return
 	}
-
-	result, err := h.RoleService.GetRolesWithPagination(c.Request.Context(), pagination.Page, pagination.PerPage, pagination.Search)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
-			ResponseCode:    http.StatusInternalServerError,
-			ResponseMessage: "Failed to fetch roles",
-		})
-		return
-	}
-
-	roles, ok := result.Data.([]models.Role)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, responses.CommonResponse{
-			ResponseCode:    http.StatusInternalServerError,
-			ResponseMessage: "Invalid data format",
-		})
-		return
-	}
-	result.Data = roles
-
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, roles)
 }
 
 func (h *roleHandler) GetRole(c *gin.Context) {
 	id := c.Param("id")
-	role, err := h.RoleService.GetRoleByID(c.Request.Context(), id)
+	role, err := h.RoleService.GetRoleByID(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Role not found"})
 		return
@@ -87,7 +51,7 @@ func (h *roleHandler) CreateRole(c *gin.Context) {
 		return
 	}
 	role := models.Role{Name: input.Name}
-	if err := h.RoleService.CreateRole(c.Request.Context(), &role); err != nil {
+	if err := h.RoleService.CreateRole(&role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create role"})
 		return
 	}
@@ -96,7 +60,7 @@ func (h *roleHandler) CreateRole(c *gin.Context) {
 
 func (h *roleHandler) UpdateRole(c *gin.Context) {
 	id := c.Param("id")
-	role, err := h.RoleService.GetRoleByID(c.Request.Context(), id)
+	role, err := h.RoleService.GetRoleByID(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Role not found"})
 		return
@@ -107,7 +71,7 @@ func (h *roleHandler) UpdateRole(c *gin.Context) {
 		return
 	}
 	role.Name = input.Name
-	if err := h.RoleService.UpdateRole(c.Request.Context(), role); err != nil {
+	if err := h.RoleService.UpdateRole(role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update role"})
 		return
 	}
@@ -116,7 +80,7 @@ func (h *roleHandler) UpdateRole(c *gin.Context) {
 
 func (h *roleHandler) DeleteRole(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.RoleService.DeleteRole(c.Request.Context(), id); err != nil {
+	if err := h.RoleService.DeleteRole(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete role"})
 		return
 	}

@@ -1,25 +1,27 @@
 package models
 
 import (
-	"errors"
+	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-// Comment represents a comment on a post with hierarchical structure
+// Comment represents a comment on a post
 type Comment struct {
-	BaseWithHierarchy
-	UserID uint64 `gorm:"not null;index" json:"user_id" validate:"required"`
-	PostID uint64 `gorm:"not null;index" json:"post_id" validate:"required"`
-	Status string `gorm:"default:'pending';index;size:20" json:"status" validate:"oneof=pending approved rejected"`
+	BaseModelWithOrdering
+	Content    string     `json:"content" gorm:"type:text;not null" validate:"required,min=1"`
+	Status     string     `json:"status" gorm:"default:'pending';index" validate:"oneof=pending approved rejected"`
+	IsPublic   bool       `json:"is_public" gorm:"default:true;index"`
+	UserID     uuid.UUID  `json:"user_id" gorm:"type:uuid;not null;index" validate:"required"`
+	PostID     uuid.UUID  `json:"post_id" gorm:"type:uuid;not null;index" validate:"required"`
+	ApprovedAt *time.Time `json:"approved_at,omitempty" gorm:"index"`
 
 	// Relationships
-	User     User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
-	Post     Post      `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"post,omitempty"`
-	Medias   []Media   `gorm:"foreignKey:ModelID;constraint:OnDelete:CASCADE" json:"medias,omitempty"`
-	Parent   *Comment  `gorm:"foreignKey:ParentID" json:"parent,omitempty"`
-	Children []Comment `gorm:"foreignKey:ParentID" json:"children,omitempty"`
-	Content  *Content  `gorm:"foreignKey:ModelID;polymorphic:Model;polymorphicValue:comment;constraint:OnDelete:CASCADE" json:"content,omitempty"`
+	User     *User     `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	Post     *Post     `json:"post,omitempty" gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE"`
+	Parent   *Comment  `json:"parent,omitempty" gorm:"foreignKey:ParentID;constraint:OnDelete:CASCADE"`
+	Children []Comment `json:"children,omitempty" gorm:"foreignKey:ParentID;constraint:OnDelete:CASCADE"`
 }
 
 // TableName specifies the table name for Comment
@@ -27,66 +29,17 @@ func (Comment) TableName() string {
 	return "comments"
 }
 
-// BeforeCreate sets timestamps and validates comment data
+// BeforeCreate hook for Comment
 func (c *Comment) BeforeCreate(tx *gorm.DB) error {
-	if err := c.BaseWithHierarchy.BeforeCreate(tx); err != nil {
-		return err
+	if c.ID == uuid.Nil {
+		c.ID = uuid.New()
 	}
-	// Set default status
-	if c.Status == "" {
-		c.Status = "pending"
-	}
-
-	return c.validate()
-}
-
-// BeforeUpdate validates comment data before update
-func (c *Comment) BeforeUpdate(tx *gorm.DB) error {
-	if err := c.BaseWithHierarchy.BeforeUpdate(tx); err != nil {
-		return err
-	}
-
-	return c.validate()
-}
-
-// validate performs validation on comment fields
-func (c *Comment) validate() error {
-	if c.UserID == 0 {
-		return errors.New("user is required")
-	}
-
-	if c.PostID == 0 {
-		return errors.New("post is required")
-	}
-
-	validStatuses := []string{"pending", "approved", "rejected"}
-	statusValid := false
-	for _, status := range validStatuses {
-		if c.Status == status {
-			statusValid = true
-			break
-		}
-	}
-	if !statusValid {
-		return errors.New("invalid status")
-	}
-
-	// Prevent circular references
-	if c.ParentID != nil && *c.ParentID == c.ID {
-		return errors.New("comment cannot be its own parent")
-	}
-
 	return nil
 }
 
-// IsRoot checks if this comment is a root comment (no parent)
-func (c *Comment) IsRoot() bool {
-	return c.ParentID == nil
-}
-
-// IsReply checks if this comment is a reply to another comment
-func (c *Comment) IsReply() bool {
-	return c.ParentID != nil
+// BeforeUpdate hook for Comment
+func (c *Comment) BeforeUpdate(tx *gorm.DB) error {
+	return nil
 }
 
 // IsApproved checks if the comment is approved
@@ -94,45 +47,50 @@ func (c *Comment) IsApproved() bool {
 	return c.Status == "approved"
 }
 
-// IsPending checks if the comment is pending approval
-func (c *Comment) IsPending() bool {
-	return c.Status == "pending"
-}
-
 // IsRejected checks if the comment is rejected
 func (c *Comment) IsRejected() bool {
 	return c.Status == "rejected"
 }
 
-// Approve marks the comment as approved
-func (c *Comment) Approve() {
-	c.Status = "approved"
+// IsPending checks if the comment is pending approval
+func (c *Comment) IsPending() bool {
+	return c.Status == "pending"
 }
 
-// Reject marks the comment as rejected
-func (c *Comment) Reject() {
-	c.Status = "rejected"
+// IsRoot checks if the comment is a root comment
+func (c *Comment) IsRoot() bool {
+	return c.ParentID == nil
 }
 
-// GetDepth returns the depth of this comment in the hierarchy
-func (c *Comment) GetDepth() uint64 {
-	if c.RecordDept != nil {
-		return *c.RecordDept
-	}
-	return 0
-}
-
-// GetReplyCount returns the number of replies to this comment
-func (c *Comment) GetReplyCount() int {
-	return len(c.Children)
-}
-
-// HasReplies checks if this comment has replies
-func (c *Comment) HasReplies() bool {
+// HasChildren checks if the comment has children
+func (c *Comment) HasChildren() bool {
 	return len(c.Children) > 0
 }
 
-// GetWordCount returns the number of words in the comment
-func (c *Comment) GetWordCount() int {
-	return 0
+// GetDepth returns the depth of the comment in the thread
+func (c *Comment) GetDepth() int {
+	return c.RecordDept
+}
+
+// Approve approves the comment
+func (c *Comment) Approve() {
+	c.Status = "approved"
+	now := time.Now()
+	c.ApprovedAt = &now
+}
+
+// Reject rejects the comment
+func (c *Comment) Reject() {
+	c.Status = "rejected"
+	c.ApprovedAt = nil
+}
+
+// MakePublic makes the comment public
+func (c *Comment) MakePublic() {
+	c.IsPublic = true
+}
+
+// MakePrivate makes the comment private
+func (c *Comment) MakePrivate() {
+	c.IsPublic = false
 }

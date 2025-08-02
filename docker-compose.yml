@@ -1,115 +1,132 @@
 services:
-  db:
-    image: postgres:17
-    restart: always
-    env_file:
-      - backend/.env.${ENV:-development}
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: go-next-postgres
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      - POSTGRES_DB=${POSTGRES_DB:-go_next}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8
     ports:
       - "5432:5432"
     volumes:
-      - ./data/db:/var/lib/postgresql/data
-
-  minio:
-    image: minio/minio:latest
-    env_file:
-      - backend/.env.${ENV:-development}
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${OSS_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${OSS_SECRET_KEY}
-    ports:
-      - "9000:9000"  # S3 API
-      - "9001:9001"  # MinIO Console
-    volumes:
-      - ./data/minio:/data
-
-  mailpit:
-    image: axllent/mailpit:latest
-    container_name: mailpit
-    ports:
-      - "8025:8025"   # Web UI
-      - "1025:1025"   # SMTP
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./init/postgres:/docker-entrypoint-initdb.d
+    networks:
+      - backend-network
     restart: unless-stopped
-    # Access the web UI at http://localhost:8025
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d go_next"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
 
+  # Backend service
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-      target: ${BUILD_TARGET:-dev}
-    depends_on:
-      - db
-      - minio
-      - mailpit
+      context: backend
+      dockerfile: backend/Dockerfile
+    container_name: go-next-backend
     env_file:
-      - backend/.env.${ENV:-development}
-    environment:
-      ENV: ${ENV:-development}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      OSS_ACCESS_KEY: ${OSS_ACCESS_KEY}
-      OSS_SECRET_KEY: ${OSS_SECRET_KEY}
-      OSS_BUCKET: ${OSS_BUCKET}
-      OSS_ENDPOINT: ${OSS_ENDPOINT}
-      OSS_REGION: ${OSS_REGION}
-      EMAIL_HOST: mailpit
-      EMAIL_PORT: 1025
-      EMAIL_FROM: noreply@example.com
+      - backend/.env
     ports:
       - "8080:8080"
+    environment:
+      - DB_TYPE=${DB_TYPE:-postgres}
+      - DB_HOST=${DB_HOST:-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-go_next}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_SSLMODE=${DB_SSLMODE:-disable}
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-here}
+      - PORT=${PORT:-8080}
+      - GIN_MODE=${GIN_MODE:-debug}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+      - APP_ENV=${APP_ENV:-development}
+      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_password}
+      - MAIL_HOST=${MAIL_HOST:-localhost}
+      - MAIL_PORT=${MAIL_PORT:-1025}
+      - MAIL_USERNAME=${MAIL_USERNAME:-}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
+      - MAIL_FROM=${MAIL_FROM:-noreply@example.com}
     volumes:
-      - .:/app  # Only for development; see below
-    working_dir: /app
+      - ./data/backend/log:/root/log
+      - ./data/backend/storage:/root/storage
+      - ./data/backend:/root/data
+    networks:
+      - backend-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
 
-  waha:
-    image: devlikeapro/waha:latest
-    container_name: waha
+  # Admin Frontend service
+  admin-frontend:
+    build:
+      context: admin-frontend
+      dockerfile: admin-frontend/Dockerfile
+    container_name: go-next-admin-frontend
+    env_file:
+      - admin-frontend/.env
     ports:
-      - "3000:3000"
-    volumes:
-      - ./data/waha-sessions:/sessions
+      - "3000:80"
     environment:
-      - WAHA_SESSION_DIR=/sessions
+      - NODE_ENV=production
+      - REACT_APP_API_URL=http://localhost:8080
+      - REACT_APP_BASE_URL=http://localhost:3000
+    volumes:
+      - ./data/admin-frontend/logs:/var/log/nginx
+    networks:
+      - backend-network
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
 
-# ---
-# Usage:
-#   - For development: set ENV=development (default), BUILD_TARGET=dev
-#   - For staging:     set ENV=staging,     BUILD_TARGET=staging
-#   - For production:  set ENV=production,  BUILD_TARGET=prod
-# Example:
-#   set ENV=production
-#   set BUILD_TARGET=prod
-#   docker compose up --build
-#
-# For production/staging, remove or set the backend volumes to read-only:
-#   volumes:
-#     - .:/app:ro
-#   Or remove the volume entirely for best security.
-#
-# Create these files for environment-specific variables:
-#   backend/.env.development
-#   backend/.env.staging
-#   backend/.env.production
-
-# ---
-# Mailpit (axllent/mailpit) is available at http://localhost:8025 for email testing.
-# Backend will send emails via SMTP to mailpit:1025.
-# Configure EMAIL_HOST, EMAIL_PORT, and EMAIL_FROM in your .env files as needed.
+networks:
+  backend-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
