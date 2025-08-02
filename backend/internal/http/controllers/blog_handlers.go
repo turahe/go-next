@@ -141,12 +141,14 @@ func (h *blogHandler) GetFeaturedPosts(c *gin.Context) {
 // @Param        limit   query     int    false "Number of posts" default(3)
 // @Success      200     {array}   models.Post
 // @Failure      500     {object}  map[string]string
-// @Router       /blog/posts/{post_id}/related [get]
+// @Router       /blog/posts/{slug}/related [get]
 func (h *blogHandler) GetRelatedPosts(c *gin.Context) {
-	postIDStr := c.Param("post_id")
-	postID, err := uuid.Parse(postIDStr)
+	slug := c.Param("slug")
+
+	// First get the post to get its ID
+	post, err := h.BlogService.GetPublicPost(slug)
 	if err != nil {
-		responses.SendError(c, http.StatusBadRequest, "Invalid post ID")
+		responses.SendError(c, http.StatusNotFound, "Post not found")
 		return
 	}
 
@@ -156,7 +158,7 @@ func (h *blogHandler) GetRelatedPosts(c *gin.Context) {
 		limit = 3
 	}
 
-	posts, err := h.BlogService.GetRelatedPosts(postID, limit)
+	posts, err := h.BlogService.GetRelatedPosts(post.ID, limit)
 	if err != nil {
 		responses.SendError(c, http.StatusInternalServerError, "Failed to fetch related posts")
 		return
@@ -208,14 +210,14 @@ func (h *blogHandler) GetPopularPosts(c *gin.Context) {
 // @Description  Get posts filtered by category slug
 // @Tags         blog
 // @Produce      json
-// @Param        category_slug path      string true  "Category slug"
+// @Param        slug path      string true  "Category slug"
 // @Param        page          query     int    false "Page number" default(1)
 // @Param        per_page      query     int    false "Items per page" default(10)
 // @Success      200           {object}  responses.LaravelPaginationResponse
 // @Failure      500           {object}  map[string]string
-// @Router       /blog/categories/{category_slug}/posts [get]
+// @Router       /blog/categories/{slug}/posts [get]
 func (h *blogHandler) GetPostsByCategory(c *gin.Context) {
-	categorySlug := c.Param("category_slug")
+	categorySlug := c.Param("slug")
 	params := responses.ParsePaginationParams(c)
 
 	posts, total, err := h.BlogService.GetPostsByCategory(categorySlug, params.Page, params.PerPage)
@@ -232,14 +234,14 @@ func (h *blogHandler) GetPostsByCategory(c *gin.Context) {
 // @Description  Get posts filtered by tag slug
 // @Tags         blog
 // @Produce      json
-// @Param        tag_slug path      string true  "Tag slug"
+// @Param        slug path      string true  "Tag slug"
 // @Param        page      query     int    false "Page number" default(1)
 // @Param        per_page  query     int    false "Items per page" default(10)
 // @Success      200       {object}  responses.LaravelPaginationResponse
 // @Failure      500       {object}  map[string]string
-// @Router       /blog/tags/{tag_slug}/posts [get]
+// @Router       /blog/tags/{slug}/posts [get]
 func (h *blogHandler) GetPostsByTag(c *gin.Context) {
-	tagSlug := c.Param("tag_slug")
+	tagSlug := c.Param("slug")
 	params := responses.ParsePaginationParams(c)
 
 	posts, total, err := h.BlogService.GetPostsByTag(tagSlug, params.Page, params.PerPage)

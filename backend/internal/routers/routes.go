@@ -58,7 +58,7 @@ func RegisterRoutes(r *gin.Engine) {
 		blog.GET("/posts/featured", blogHandler.GetFeaturedPosts)
 		blog.GET("/posts/popular", blogHandler.GetPopularPosts)
 		blog.GET("/posts/:slug", blogHandler.GetPublicPost)
-		blog.GET("/posts/:post_id/related", blogHandler.GetRelatedPosts)
+		blog.GET("/posts/:slug/related", blogHandler.GetRelatedPosts)
 		blog.GET("/search", blogHandler.SearchPosts)
 
 		// Blog statistics
@@ -69,10 +69,10 @@ func RegisterRoutes(r *gin.Engine) {
 		// Categories and tags
 		blog.GET("/categories", blogHandler.GetPublicCategories)
 		blog.GET("/categories/:slug", blogHandler.GetCategoryBySlug)
-		blog.GET("/categories/:category_slug/posts", blogHandler.GetPostsByCategory)
+		blog.GET("/categories/:slug/posts", blogHandler.GetPostsByCategory)
 		blog.GET("/tags", blogHandler.GetPublicTags)
 		blog.GET("/tags/:slug", blogHandler.GetTagBySlug)
-		blog.GET("/tags/:tag_slug/posts", blogHandler.GetPostsByTag)
+		blog.GET("/tags/:slug/posts", blogHandler.GetPostsByTag)
 
 		// View count tracking
 		blog.POST("/posts/:id/view", blogHandler.IncrementViewCount)

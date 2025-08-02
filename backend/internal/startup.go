@@ -17,11 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	// "go-next/docs"
-
 	"github.com/gin-gonic/gin"
-	// swaggerFiles "github.com/swaggo/files"
-	// ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 var Emailer *email.EmailService
@@ -94,14 +90,6 @@ func RunServer(host, port string) {
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.ResponseTimeMiddleware())
 	r.Use(middleware.ValidationMiddleware())
-
-	// Swagger documentation (commented out for now)
-	// docs.SwaggerInfo.Title = "Go Next API"
-	// docs.SwaggerInfo.Description = "API documentation for the Go Next backend."
-	// docs.SwaggerInfo.Version = "1.0"
-	// docs.SwaggerInfo.BasePath = "/api"
-
-	// r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Register routes
 	routers.RegisterRoutes(r)
