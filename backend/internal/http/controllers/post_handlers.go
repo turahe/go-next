@@ -3,11 +3,14 @@ package controllers
 import (
 	"net/http"
 
-	"wordpress-go-next/backend/internal/http/requests"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/services"
+	"go-next/internal/http/requests"
+	"go-next/internal/http/responses"
+	"go-next/internal/models"
+	"go-next/internal/services"
+	"go-next/pkg/database"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type PostHandler interface {
@@ -28,19 +31,54 @@ func NewPostHandler(postService services.PostService) PostHandler {
 
 // GetPosts godoc
 // @Summary      List posts
-// @Description  Get all posts
+// @Description  Get all posts with pagination
 // @Tags         posts
 // @Produce      json
-// @Success      200  {array}   models.Post
-// @Failure      500  {object}  map[string]string
+// @Param        page      query     int    false "Page number"
+// @Param        per_page  query     int    false "Items per page"
+// @Param        search    query     string false "Search term"
+// @Param        category  query     string false "Category ID filter"
+// @Success      200       {object}  responses.LaravelPaginationResponse
+// @Failure      500       {object}  map[string]string
 // @Router       /posts [get]
 func (h *postHandler) GetPosts(c *gin.Context) {
-	posts, err := h.PostService.GetAllPosts()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch posts"})
+	params := responses.ParsePaginationParams(c)
+	search := c.Query("search")
+	categoryID := c.Query("category")
+
+	offset := (params.Page - 1) * params.PerPage
+
+	var posts []models.Post
+	var total int64
+
+	query := database.DB.Model(&models.Post{}).Preload("Category").Preload("User")
+
+	// Apply search filter
+	if search != "" {
+		query = query.Where("title ILIKE ? OR content ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	// Apply category filter
+	if categoryID != "" {
+		if parsedID, err := uuid.Parse(categoryID); err == nil {
+			query = query.Where("category_id = ?", parsedID)
+		}
+	}
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		responses.SendError(c, http.StatusInternalServerError, "Failed to count posts")
 		return
 	}
-	c.JSON(http.StatusOK, posts)
+
+	// Get paginated posts
+	if err := query.Offset(offset).Limit(params.PerPage).Order("created_at DESC").Find(&posts).Error; err != nil {
+		responses.SendError(c, http.StatusInternalServerError, "Failed to fetch posts")
+		return
+	}
+
+	// Send Laravel-style pagination response
+	responses.SendLaravelPaginationWithMessage(c, "Posts retrieved successfully", posts, total, int64(params.Page), int64(params.PerPage))
 }
 
 // GetPost godoc
@@ -75,8 +113,7 @@ func (h *postHandler) GetPost(c *gin.Context) {
 // @Router       /posts [post]
 func (h *postHandler) CreatePost(c *gin.Context) {
 	var input requests.PostCreateRequest
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	if !requests.ValidateRequest(c, &input) {
 		return
 	}
 	userID, exists := c.Get("user_id")
@@ -84,13 +121,19 @@ func (h *postHandler) CreatePost(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	uid := userID.(uint)
+	uid, ok := userID.(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID"})
+		return
+	}
 	post := models.Post{
 		Title:      input.Title,
 		Content:    input.Content,
-		CategoryID: input.CategoryID,
-		CreatedBy:  &uid,
-		UpdatedBy:  &uid,
+		CategoryID: &input.CategoryID,
+		BaseModelWithUser: models.BaseModelWithUser{
+			CreatedBy: &uid,
+			UpdatedBy: &uid,
+		},
 	}
 	if err := h.PostService.CreatePost(&post); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create post"})
@@ -120,13 +163,12 @@ func (h *postHandler) UpdatePost(c *gin.Context) {
 		return
 	}
 	var input requests.PostUpdateRequest
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	if !requests.ValidateRequest(c, &input) {
 		return
 	}
 	post.Title = input.Title
 	post.Content = input.Content
-	post.CategoryID = input.CategoryID
+	post.CategoryID = &input.CategoryID
 	if err := h.PostService.UpdatePost(post); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update post"})
 		return

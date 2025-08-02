@@ -1,47 +1,113 @@
 package models
 
 import (
-	"time"
+	"fmt"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
+// Media represents a media file (image, video, document, etc.)
 type Media struct {
-	ID              uint       `gorm:"primaryKey;autoIncrement;column:id"`
-	UUID            uuid.UUID  `gorm:"type:uuid;not null;column:uuid"`
-	Hash            string     `gorm:"size:255;column:hash"`
-	Name            string     `gorm:"size:255;not null;column:name"`
-	FileName        string     `gorm:"size:255;not null;column:file_name"`
-	Disk            string     `gorm:"size:255;not null;column:disk"`
-	MimeType        string     `gorm:"size:255;not null;column:mime_type"`
-	Size            int        `gorm:"not null;check:size > 0;column:size"`
-	RecordLeft      *int64     `gorm:"column:record_left"`
-	RecordRight     *int64     `gorm:"column:record_right"`
-	RecordDept      *int64     `gorm:"column:record_dept"`
-	RecordOrdering  *int64     `gorm:"column:record_ordering"`
-	ParentID        *int64     `gorm:"column:parent_id"`
-	CustomAttribute string     `gorm:"size:255;column:custom_attribute"`
-	CreatedBy       *int64     `gorm:"column:created_by"`
-	UpdatedBy       *int64     `gorm:"column:updated_by"`
-	DeletedBy       *int64     `gorm:"column:deleted_by"`
-	CreatedAt       time.Time  `gorm:"column:created_at"`
-	UpdatedAt       time.Time  `gorm:"column:updated_at"`
-	DeletedAt       *time.Time `gorm:"column:deleted_at"`
-	Mediables       []Mediable `gorm:"foreignKey:MediaID"`
+	BaseModel
+	UUID            string     `json:"uuid" gorm:"uniqueIndex;not null;size:36"`
+	FileName        string     `json:"file_name" gorm:"not null;size:255" validate:"required,min=1,max=255"`
+	OriginalName    string     `json:"original_name" gorm:"not null;size:255" validate:"required,min=1,max=255"`
+	MimeType        string     `json:"mime_type" gorm:"not null;size:100" validate:"required,min=1,max=100"`
+	Size            int64      `json:"size" gorm:"not null;check:size > 0" validate:"required,gt=0"`
+	Hash            string     `json:"hash" gorm:"size:64;index"`
+	Disk            string     `json:"disk" gorm:"default:'local';size:20" validate:"oneof=local s3 gcs"`
+	Path            string     `json:"path" gorm:"not null;size:500" validate:"required,min=1,max=500"`
+	URL             string     `json:"url" gorm:"size:1000"`
+	Width           *int       `json:"width,omitempty"`
+	Height          *int       `json:"height,omitempty"`
+	Duration        *float64   `json:"duration,omitempty"`
+	CustomAttribute string     `json:"custom_attribute" gorm:"type:json"`
+	IsPublic        bool       `json:"is_public" gorm:"default:true;index"`
+	CreatedBy       *uuid.UUID `json:"created_by,omitempty" gorm:"type:uuid;index"`
+	UpdatedBy       *uuid.UUID `json:"updated_by,omitempty" gorm:"type:uuid;index"`
+	DeletedBy       *uuid.UUID `json:"deleted_by,omitempty" gorm:"type:uuid;index"`
+
+	// Relationships
+	Posts []Post `json:"posts,omitempty" gorm:"many2many:mediables;constraint:OnDelete:CASCADE"`
 }
 
+// TableName specifies the table name for Media
 func (Media) TableName() string {
 	return "media"
 }
 
-func (m *Media) BeforeCreate(*gorm.DB) error {
-	m.CreatedAt = time.Now()
-	m.UpdatedAt = time.Now()
+// BeforeCreate hook for Media
+func (m *Media) BeforeCreate(tx *gorm.DB) error {
+	if m.ID == uuid.Nil {
+		m.ID = uuid.New()
+	}
+	if m.UUID == "" {
+		m.UUID = uuid.New().String()
+	}
 	return nil
 }
 
-func (m *Media) BeforeUpdate(*gorm.DB) error {
-	m.UpdatedAt = time.Now()
+// BeforeUpdate hook for Media
+func (m *Media) BeforeUpdate(tx *gorm.DB) error {
 	return nil
+}
+
+// IsImage checks if the media is an image
+func (m *Media) IsImage() bool {
+	return m.MimeType != "" && len(m.MimeType) >= 5 && m.MimeType[:5] == "image"
+}
+
+// IsVideo checks if the media is a video
+func (m *Media) IsVideo() bool {
+	return m.MimeType != "" && len(m.MimeType) >= 5 && m.MimeType[:5] == "video"
+}
+
+// IsAudio checks if the media is an audio file
+func (m *Media) IsAudio() bool {
+	return m.MimeType != "" && len(m.MimeType) >= 5 && m.MimeType[:5] == "audio"
+}
+
+// IsDocument checks if the media is a document
+func (m *Media) IsDocument() bool {
+	return m.MimeType != "" && (m.MimeType == "application/pdf" ||
+		m.MimeType == "application/msword" ||
+		m.MimeType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+}
+
+// GetFileSize returns the file size in a human-readable format
+func (m *Media) GetFileSize() string {
+	const unit = 1024
+	if m.Size < unit {
+		return fmt.Sprintf("%d B", m.Size)
+	}
+	div, exp := int64(unit), 0
+	for n := m.Size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(m.Size)/float64(div), "KMGTPE"[exp])
+}
+
+// GetDimensions returns the dimensions as a string
+func (m *Media) GetDimensions() string {
+	if m.Width != nil && m.Height != nil {
+		return fmt.Sprintf("%dx%d", *m.Width, *m.Height)
+	}
+	return ""
+}
+
+// GetIsPublic returns the public status
+func (m *Media) GetIsPublic() bool {
+	return m.IsPublic
+}
+
+// MakePublic makes the media public
+func (m *Media) MakePublic() {
+	m.IsPublic = true
+}
+
+// MakePrivate makes the media private
+func (m *Media) MakePrivate() {
+	m.IsPublic = false
 }

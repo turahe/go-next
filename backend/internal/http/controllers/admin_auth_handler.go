@@ -1,13 +1,13 @@
 package controllers
 
 import (
+	"go-next/internal/http/requests"
+	"go-next/internal/http/responses"
+	"go-next/internal/models"
+	"go-next/internal/rules"
+	"go-next/pkg/database"
+	"go-next/pkg/utils"
 	"net/http"
-	"wordpress-go-next/backend/internal/http/requests"
-	"wordpress-go-next/backend/internal/http/responses"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/rules"
-	"wordpress-go-next/backend/pkg/database"
-	"wordpress-go-next/backend/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -90,10 +90,10 @@ func (h *adminAuthHandler) Register(c *gin.Context) {
 			return err
 		}
 		jwtKey := models.JWTKey{
-			UserID:          user.ID,
-			ClientKey:       clientKey,
-			SecretKey:       secretKey,
-			TokenExpiration: 3600, // default 1 hour
+			KeyID:     clientKey,
+			Algorithm: "HS256",
+			Key:       secretKey,
+			IsActive:  true,
 		}
 		if err := tx.Create(&jwtKey).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store JWT key"})

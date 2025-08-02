@@ -1,8 +1,8 @@
 package cmd
 
 import (
+	"go-next/internal"
 	"os"
-	"wordpress-go-next/backend/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -14,8 +14,14 @@ var serverCmd = &cobra.Command{
 	Use:   "server",
 	Short: "Run the RESTful API server",
 	Run: func(cmd *cobra.Command, args []string) {
+		// Load configuration first
+		config := internal.GetConfig()
+
 		if host == "" {
 			host = "0.0.0.0"
+		}
+		if port == "" {
+			port = config.Port
 		}
 		if port == "" {
 			port = "8080"

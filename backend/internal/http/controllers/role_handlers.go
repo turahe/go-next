@@ -2,9 +2,9 @@ package controllers
 
 import (
 	"net/http"
-	"wordpress-go-next/backend/internal/http/requests"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/services"
+	"go-next/internal/http/requests"
+	"go-next/internal/models"
+	"go-next/internal/services"
 
 	"github.com/gin-gonic/gin"
 )

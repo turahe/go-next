@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"wordpress-go-next/backend/pkg/config"
+	"go-next/internal/models"
+	"go-next/pkg/config"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -37,7 +38,33 @@ func Setup() error {
 
 	DB = db
 
+	// Auto-migrate all models
+	if err := AutoMigrate(); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// AutoMigrate performs database migrations for all models
+func AutoMigrate() error {
+	// Auto-migrate all models
+	err := DB.AutoMigrate(
+		&models.User{},
+		&models.Post{},
+		&models.Comment{},
+		&models.Category{},
+		&models.Role{},
+		&models.Media{},
+		&models.Mediable{},
+		&models.Content{},
+		&models.Token{},
+		&models.RefreshToken{},
+		&models.VerificationToken{},
+		&models.Notification{},
+	)
+
+	return err
 }
 
 func CreateDatabaseConnection(configuration *config.Configuration) (*gorm.DB, error) {
@@ -62,44 +89,87 @@ func CreateDatabaseConnection(configuration *config.Configuration) (*gorm.DB, er
 		},
 	)
 
+	// Configure GORM with optimized settings
+	gormConfig := &gorm.Config{
+		Logger: newDBLogger,
+		// Disable automatic transaction wrapping for better performance
+		DisableAutomaticPing: true,
+		// Optimize for read-heavy workloads
+		PrepareStmt: true,
+		// Disable foreign key constraints for better performance (enable in production)
+		DisableForeignKeyConstraintWhenMigrating: true,
+	}
+
 	var db *gorm.DB
 	switch driver {
 	case "mysql":
-		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: newDBLogger})
+		db, err = gorm.Open(mysql.Open(dsn), gormConfig)
 	case "postgres":
-		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: newDBLogger})
+		db, err = gorm.Open(postgres.Open(dsn), gormConfig)
 	case "sqlite":
-		db, err = gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: newDBLogger})
+		db, err = gorm.Open(sqlite.Open(dsn), gormConfig)
 	case "sqlserver":
-		db, err = gorm.Open(sqlserver.Open(dsn), &gorm.Config{Logger: newDBLogger})
+		db, err = gorm.Open(sqlserver.Open(dsn), gormConfig)
+	default:
+		return nil, fmt.Errorf("unsupported database driver: %s", driver)
 	}
 
 	if err != nil {
-		return nil, errors.New("failed to open database connection")
+		return nil, fmt.Errorf("failed to open database connection: %w", err)
 	}
 
-	return db, nil
+	// Configure connection pool
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
 
+	// Set connection pool settings
+	sqlDB.SetMaxIdleConns(10)                  // Maximum number of idle connections
+	sqlDB.SetMaxOpenConns(100)                 // Maximum number of open connections
+	sqlDB.SetConnMaxLifetime(time.Hour)        // Maximum lifetime of a connection
+	sqlDB.SetConnMaxIdleTime(30 * time.Minute) // Maximum idle time of a connection
+
+	return db, nil
 }
 
 func buildDSN(driver string, configuration *config.Configuration) (string, error) {
 	switch driver {
 	case "mysql":
-		return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8&parseTime=True", configuration.Database.Username, configuration.Database.Password, configuration.Database.Host, configuration.Database.Port, configuration.Database.Dbname), nil
+		// Add connection pool and performance optimizations to MySQL DSN
+		return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=10s&readTimeout=30s&writeTimeout=30s&maxAllowedPacket=0",
+			configuration.Database.Username,
+			configuration.Database.Password,
+			configuration.Database.Host,
+			configuration.Database.Port,
+			configuration.Database.Dbname), nil
 	case "postgres":
 		mode := "disable"
 		if configuration.Database.Sslmode {
 			mode = "require"
 		}
-		return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s", configuration.Database.Host, configuration.Database.Username, configuration.Database.Password, configuration.Database.Dbname, configuration.Database.Port, mode), nil
+		// Add connection pool and performance optimizations to PostgreSQL DSN
+		return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s connect_timeout=10 application_name=wordpress_go_next",
+			configuration.Database.Host,
+			configuration.Database.Username,
+			configuration.Database.Password,
+			configuration.Database.Dbname,
+			configuration.Database.Port,
+			mode), nil
 	case "sqlite":
-		return "./" + configuration.Database.Dbname + ".db", nil
+		return "./data/" + configuration.Database.Dbname + ".db", nil
 	case "sqlserver":
 		mode := "disable"
 		if configuration.Database.Sslmode {
 			mode = "true"
 		}
-		return fmt.Sprintf("sqlserver://%s:%s@%s:%s?database=%s&encrypt=%s", configuration.Database.Username, configuration.Database.Password, configuration.Database.Host, configuration.Database.Port, configuration.Database.Dbname, mode), nil
+		return fmt.Sprintf("sqlserver://%s:%s@%s:%s?database=%s&encrypt=%s&connection+timeout=10",
+			configuration.Database.Username,
+			configuration.Database.Password,
+			configuration.Database.Host,
+			configuration.Database.Port,
+			configuration.Database.Dbname,
+			mode), nil
 	default:
 		return "", fmt.Errorf("unsupported database driver: %s", driver)
 	}
@@ -116,4 +186,16 @@ func getWriter() io.Writer {
 
 func GetDB() *gorm.DB {
 	return DB
+}
+
+// Close closes the database connection
+func Close() error {
+	if DB != nil {
+		sqlDB, err := DB.DB()
+		if err != nil {
+			return err
+		}
+		return sqlDB.Close()
+	}
+	return nil
 }

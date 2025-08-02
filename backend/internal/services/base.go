@@ -1,8 +1,8 @@
 package services
 
 import (
-	"wordpress-go-next/backend/internal/http/responses"
-	"wordpress-go-next/backend/pkg/database"
+	"go-next/internal/http/responses"
+	"go-next/pkg/database"
 )
 
 type BaseService struct{}
@@ -34,7 +34,7 @@ type PaginateResult struct {
 }
 
 // Paginate is a generic pagination method for all service models
-func (s *BaseService) Paginate(model interface{}, params PaginationParams, out interface{}) (*responses.PaginationResponse, error) {
+func (s *BaseService) Paginate(model interface{}, params PaginationParams, out interface{}) (*responses.LaravelPaginationResponse, error) {
 	db := database.DB.Model(model)
 
 	var totalCount int64
@@ -57,24 +57,37 @@ func (s *BaseService) Paginate(model interface{}, params PaginationParams, out i
 
 	totalPage := (totalCount + int64(params.PerPage) - 1) / int64(params.PerPage)
 	lastPage := totalPage
-	var nextPage, prevPage int64
-	if int64(params.Page) < totalPage {
-		nextPage = int64(params.Page) + 1
+
+	// Calculate from and to for Laravel-style pagination
+	from := int64(params.Page-1)*int64(params.PerPage) + 1
+	if from > totalCount {
+		from = 0
 	}
-	if params.Page > 1 {
-		prevPage = int64(params.Page) - 1
+	to := int64(params.Page) * int64(params.PerPage)
+	if to > totalCount {
+		to = totalCount
 	}
 
-	return &responses.PaginationResponse{
-		Data:         out,
-		TotalCount:   totalCount,
-		TotalPage:    totalPage,
-		CurrentPage:  int64(params.Page),
-		LastPage:     lastPage,
-		PerPage:      int64(params.PerPage),
-		NextPage:     nextPage,
-		PreviousPage: prevPage,
-	}, nil
+	// Create Laravel-style pagination response
+	response := &responses.LaravelPaginationResponse{
+		Data: out,
+		Links: responses.PaginationLinks{
+			First: "", // Will be set by the handler
+			Last:  "", // Will be set by the handler
+			Prev:  "", // Will be set by the handler
+			Next:  "", // Will be set by the handler
+		},
+		Meta: responses.PaginationMeta{
+			CurrentPage: int64(params.Page),
+			From:        from,
+			LastPage:    lastPage,
+			PerPage:     int64(params.PerPage),
+			To:          to,
+			Total:       totalCount,
+		},
+	}
+
+	return response, nil
 }
 
 func (s *BaseService) Update(value interface{}) error {

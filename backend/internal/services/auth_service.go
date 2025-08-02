@@ -3,16 +3,17 @@ package services
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"go-next/internal/models"
+	"go-next/pkg/database"
 	"time"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/pkg/database"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthService interface {
 	GenerateToken() string
-	CreateVerificationToken(userID uint, tokenType string) (string, error)
+	CreateVerificationToken(userID uuid.UUID, tokenType string) (string, error)
 	MarkEmailVerified(user *models.User) error
 	MarkPhoneVerified(user *models.User) error
 	HashPassword(password string) (string, error)
@@ -27,30 +28,51 @@ func (s *authService) GenerateToken() string {
 	return hex.EncodeToString(b)
 }
 
-func (s *authService) CreateVerificationToken(userID uint, tokenType string) (string, error) {
+func (s *authService) CreateVerificationToken(userID uuid.UUID, tokenType string) (string, error) {
 	token := s.GenerateToken()
 	t := models.VerificationToken{
 		UserID:    userID,
 		Token:     token,
-		Type:      tokenType,
+		Type:      models.VerificationTokenType(tokenType),
 		ExpiresAt: time.Now().Add(30 * time.Minute),
 	}
 	if err := database.DB.Create(&t).Error; err != nil {
 		return "", err
 	}
+
+	// Cache the verification token
+	TokenCacheSvc.CacheVerificationToken(&t)
+
+	// Invalidate user's verification tokens cache for this type
+	TokenCacheSvc.InvalidateUserVerificationTokens(userID, t.Type)
+
 	return token, nil
 }
 
 func (s *authService) MarkEmailVerified(user *models.User) error {
 	now := time.Now()
 	user.EmailVerified = &now
-	return database.DB.Save(user).Error
+	if err := database.DB.Save(user).Error; err != nil {
+		return err
+	}
+
+	// Invalidate any cached verification tokens for this user
+	TokenCacheSvc.InvalidateUserVerificationTokens(user.ID, models.EmailVerification)
+
+	return nil
 }
 
 func (s *authService) MarkPhoneVerified(user *models.User) error {
 	now := time.Now()
 	user.PhoneVerified = &now
-	return database.DB.Save(user).Error
+	if err := database.DB.Save(user).Error; err != nil {
+		return err
+	}
+
+	// Invalidate any cached verification tokens for this user
+	TokenCacheSvc.InvalidateUserVerificationTokens(user.ID, models.PhoneVerification)
+
+	return nil
 }
 
 func (s *authService) HashPassword(password string) (string, error) {
@@ -64,7 +86,14 @@ func (s *authService) ResetUserPassword(user *models.User, newPassword string) e
 		return err
 	}
 	user.PasswordHash = hash
-	return database.DB.Save(user).Error
+	if err := database.DB.Save(user).Error; err != nil {
+		return err
+	}
+
+	// Invalidate any cached password reset tokens for this user
+	TokenCacheSvc.InvalidateUserVerificationTokens(user.ID, models.PasswordReset)
+
+	return nil
 }
 
 var AuthSvc AuthService = &authService{}

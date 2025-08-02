@@ -4,12 +4,13 @@ import (
 	"net/http"
 	"strconv"
 
-	"wordpress-go-next/backend/internal/http/requests"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/rules"
+	"go-next/internal/http/requests"
+	"go-next/internal/models"
+	"go-next/internal/rules"
 
-	"wordpress-go-next/backend/internal/services"
-	"wordpress-go-next/backend/pkg/database"
+	"go-next/internal/http/responses"
+	"go-next/internal/services"
+	"go-next/pkg/database"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -17,9 +18,11 @@ import (
 
 type UserHandler interface {
 	GetUserProfile(c *gin.Context)
+	GetUsers(c *gin.Context)
 	UpdateUserProfile(c *gin.Context)
 	UpdateUserRole(c *gin.Context)
 	UserCreate(c *gin.Context)
+	DeleteUser(c *gin.Context)
 }
 
 type userHandler struct {
@@ -138,6 +141,53 @@ func (h *userHandler) UpdateUserRole(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+// GetUsers godoc
+// @Summary      List users
+// @Description  Get all users with pagination
+// @Tags         users
+// @Produce      json
+// @Param        page   query     int    false "Page number"
+// @Param        limit  query     int    false "Items per page"
+// @Param        search query     string false "Search term"
+// @Success      200    {object}  responses.LaravelPaginationResponse
+// @Failure      400    {object}  map[string]string
+// @Router       /users [get]
+func (h *userHandler) GetUsers(c *gin.Context) {
+	params := responses.ParsePaginationParams(c)
+	search := c.Query("search")
+
+	offset := (params.Page - 1) * params.PerPage
+
+	var users []models.User
+	var total int64
+
+	query := database.DB.Model(&models.User{}).Preload("Roles")
+
+	if search != "" {
+		query = query.Where("username ILIKE ? OR email ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		responses.SendError(c, http.StatusInternalServerError, "Failed to count users")
+		return
+	}
+
+	// Get paginated users
+	if err := query.Offset(offset).Limit(params.PerPage).Find(&users).Error; err != nil {
+		responses.SendError(c, http.StatusInternalServerError, "Failed to fetch users")
+		return
+	}
+
+	// Hide password hashes
+	for i := range users {
+		users[i].PasswordHash = ""
+	}
+
+	// Send Laravel-style pagination response
+	responses.SendLaravelPaginationWithMessage(c, "Users retrieved successfully", users, total, int64(params.Page), int64(params.PerPage))
+}
+
 // UserCreate godoc
 // @Summary      Create a new user
 // @Description  Create a new user with the provided details
@@ -151,12 +201,7 @@ func (h *userHandler) UpdateUserRole(c *gin.Context) {
 // @Router       /users [post]
 func (h *userHandler) UserCreate(c *gin.Context) {
 	var input requests.AuthRequest
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		return
-	}
-	if err := rules.Validate.Struct(input); err != nil {
-		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
+	if !requests.ValidateRequest(c, &input) {
 		return
 	}
 	if err := database.DB.Transaction(func(tx *gorm.DB) error {
@@ -188,4 +233,33 @@ func (h *userHandler) UserCreate(c *gin.Context) {
 	}); err != nil {
 		return
 	}
+}
+
+// DeleteUser godoc
+// @Summary      Delete a user
+// @Description  Delete a user by ID
+// @Tags         users
+// @Produce      json
+// @Param        id   path      int  true  "User ID"
+// @Success      200  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /users/{id} [delete]
+func (h *userHandler) DeleteUser(c *gin.Context) {
+	id := c.Param("id")
+
+	// Check if user exists
+	user, err := h.UserService.GetUserByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Delete user
+	if err := database.DB.Delete(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }

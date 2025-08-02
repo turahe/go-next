@@ -1,5 +1,9 @@
 package requests
 
+import (
+	"github.com/google/uuid"
+)
+
 type UserRoleAssignmentInput struct {
-	RoleID uint `json:"role_id" binding:"required"`
+	RoleID uuid.UUID `json:"role_id" binding:"required"`
 }

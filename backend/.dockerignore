@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+docs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+log/
+
+# Database
+*.db
+*.sqlite
+
+# Environment files
+.env.local
+.env.production
+
+# Build artifacts
+main
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+test/
+tests/
+
+# Air configuration (for development)
+.air.toml 

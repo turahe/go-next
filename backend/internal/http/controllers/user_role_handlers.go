@@ -1,12 +1,13 @@
 package controllers
 
 import (
+	"go-next/internal/http/requests"
+	"go-next/internal/models"
+	"go-next/internal/services"
 	"net/http"
-	"wordpress-go-next/backend/internal/http/requests"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type UserRoleHandler interface {
@@ -29,9 +30,8 @@ func (h *userRoleHandler) AssignRoleToUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	user := &models.User{ID: 0}
-	role := &models.Role{ID: input.RoleID}
-	user.ID = 0
+	user := &models.User{BaseModel: models.BaseModel{ID: uuid.Nil}}
+	role := &models.Role{BaseModel: models.BaseModel{ID: input.RoleID}}
 	if err := h.UserRoleService.AssignRoleToUser(user, role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign role"})
 		return
@@ -40,10 +40,8 @@ func (h *userRoleHandler) AssignRoleToUser(c *gin.Context) {
 }
 
 func (h *userRoleHandler) RemoveRoleFromUser(c *gin.Context) {
-	user := &models.User{ID: 0}
-	role := &models.Role{ID: 0}
-	user.ID = 0
-	role.ID = 0
+	user := &models.User{BaseModel: models.BaseModel{ID: uuid.Nil}}
+	role := &models.Role{BaseModel: models.BaseModel{ID: uuid.Nil}}
 	if err := h.UserRoleService.RemoveRoleFromUser(user, role); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove role"})
 		return
@@ -52,8 +50,7 @@ func (h *userRoleHandler) RemoveRoleFromUser(c *gin.Context) {
 }
 
 func (h *userRoleHandler) ListUserRoles(c *gin.Context) {
-	user := &models.User{ID: 0}
-	user.ID = 0
+	user := &models.User{BaseModel: models.BaseModel{ID: uuid.Nil}}
 	roles, err := h.UserRoleService.ListUserRoles(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list roles"})

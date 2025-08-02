@@ -1,8 +1,8 @@
 package services
 
 import (
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/pkg/database"
+	"go-next/internal/models"
+	"go-next/pkg/database"
 
 	"gorm.io/gorm"
 )
@@ -35,7 +35,7 @@ func (s *postService) CreatePost(post *models.Post) error {
 			return err
 		}
 		for i := range post.Contents {
-			post.Contents[i].ModelId = post.ID
+			post.Contents[i].ModelID = post.ID
 			post.Contents[i].ModelType = "post"
 			if err := tx.Create(&post.Contents[i]).Error; err != nil {
 				return err

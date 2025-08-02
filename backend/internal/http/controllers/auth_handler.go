@@ -1,18 +1,19 @@
 package controllers
 
 import (
-	"wordpress-go-next/backend/internal/http/requests"
-	"wordpress-go-next/backend/internal/http/responses"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/rules"
-	"wordpress-go-next/backend/pkg/database"
-	"wordpress-go-next/backend/pkg/utils"
+	"go-next/internal/http/requests"
+	"go-next/internal/http/responses"
+	"go-next/internal/models"
+	"go-next/internal/services"
+	"go-next/pkg/database"
+	"go-next/pkg/utils"
 
 	"time"
 
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -44,12 +45,7 @@ type AuthResponse struct {
 
 func (h *authHandler) Register(c *gin.Context) {
 	var req requests.AuthRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Invalid request"})
-		return
-	}
-	if err := rules.Validate.Struct(req); err != nil {
-		c.JSON(400, requests.FormatValidationError(err))
+	if !requests.ValidateRequest(c, &req) {
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -108,10 +104,10 @@ func (h *authHandler) Register(c *gin.Context) {
 			return err
 		}
 		jwtKey := models.JWTKey{
-			UserID:          user.ID,
-			ClientKey:       clientKey,
-			SecretKey:       secretKey,
-			TokenExpiration: 3600, // default 1 hour
+			KeyID:     clientKey,
+			Algorithm: "HS256",
+			Key:       secretKey,
+			IsActive:  true,
 		}
 		if err := tx.Create(&jwtKey).Error; err != nil {
 			c.JSON(500, gin.H{"error": "Failed to store JWT key"})
@@ -130,12 +126,7 @@ func (h *authHandler) Register(c *gin.Context) {
 
 func (h *authHandler) Login(c *gin.Context) {
 	var req requests.AuthRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Invalid request"})
-		return
-	}
-	if err := rules.Validate.StructPartial(req, "Email", "Password"); err != nil {
-		c.JSON(400, requests.FormatValidationError(err))
+	if !requests.ValidateRequestPartial(c, &req, "Email", "Password") {
 		return
 	}
 	var user models.User
@@ -158,12 +149,13 @@ func (h *authHandler) Login(c *gin.Context) {
 		return
 	}
 	// Store refresh token in Token table
+	expiredAt := time.Now().Add(7 * 24 * time.Hour) // Refresh token valid for 7 days
 	tokenModel := models.Token{
-		Token:        token,
-		UserID:       user.ID,
-		ClientSecret: "", // Not used for refresh, can be set if needed
-		RefreshToken: refreshToken,
-		ExpiredAt:    time.Now().Add(7 * 24 * time.Hour), // Refresh token valid for 7 days
+		Token:     refreshToken,
+		UserID:    user.ID,
+		Type:      "refresh",
+		ExpiredAt: &expiredAt,
+		IsActive:  true,
 	}
 	if err := database.DB.Create(&tokenModel).Error; err != nil {
 		c.JSON(500, gin.H{"error": "Failed to store refresh token"})
@@ -181,11 +173,19 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Invalid request"})
 		return
 	}
-	var tokenModel models.Token
-	if err := database.DB.Where("refresh_token = ? AND expired_at > ?", req.RefreshToken, time.Now()).First(&tokenModel).Error; err != nil {
-		c.JSON(401, gin.H{"error": "Invalid or expired refresh token"})
-		return
+
+	// Try to get token from cache first
+	tokenModel, err := services.TokenCacheSvc.GetTokenByValue(req.RefreshToken)
+	if err != nil {
+		// Cache miss, get from database
+		if err := database.DB.Where("token = ? AND type = ? AND expired_at > ? AND is_active = ?", req.RefreshToken, "refresh", time.Now(), true).First(&tokenModel).Error; err != nil {
+			c.JSON(401, gin.H{"error": "Invalid or expired refresh token"})
+			return
+		}
+		// Cache the token
+		services.TokenCacheSvc.CacheToken(tokenModel)
 	}
+
 	// Issue new access token
 	token, err := utils.GenerateJWT(tokenModel.UserID)
 	if err != nil {
@@ -198,12 +198,17 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Failed to generate refresh token"})
 		return
 	}
-	tokenModel.RefreshToken = newRefreshToken
-	tokenModel.ExpiredAt = time.Now().Add(7 * 24 * time.Hour)
+	newExpiredAt := time.Now().Add(7 * 24 * time.Hour)
+	tokenModel.Token = newRefreshToken
+	tokenModel.ExpiredAt = &newExpiredAt
 	if err := database.DB.Save(&tokenModel).Error; err != nil {
 		c.JSON(500, gin.H{"error": "Failed to update refresh token"})
 		return
 	}
+
+	// Update cache with new token
+	services.TokenCacheSvc.CacheToken(tokenModel)
+
 	c.JSON(200, AuthResponse{Token: token, RefreshToken: newRefreshToken})
 }
 
@@ -225,7 +230,17 @@ func (h *authHandler) RequestEmailVerification(c *gin.Context) {
 		Type:      "email_verification",
 		ExpiresAt: time.Now().Add(30 * time.Minute),
 	}
-	database.DB.Create(&t)
+	if err := database.DB.Create(&t).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Failed to create verification token"})
+		return
+	}
+
+	// Cache the verification token
+	services.TokenCacheSvc.CacheVerificationToken(&t)
+
+	// Invalidate user's verification tokens cache for this type
+	services.TokenCacheSvc.InvalidateUserVerificationTokens(user.ID, models.EmailVerification)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Verification email sent", "token": token})
 }
 
@@ -238,11 +253,19 @@ func (h *authHandler) VerifyEmail(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	var vt models.VerificationToken
-	if err := database.DB.Where("user_id = ? AND token = ? AND type = ? AND used = ? AND expires_at > ?", id, input.Token, "email_verification", false, time.Now()).First(&vt).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
-		return
+
+	// Try to get verification token from cache first
+	vt, err := services.TokenCacheSvc.GetVerificationTokenByValue(input.Token)
+	if err != nil {
+		// Cache miss, get from database
+		if err := database.DB.Where("user_id = ? AND token = ? AND type = ? AND used = ? AND expires_at > ?", id, input.Token, "email_verification", false, time.Now()).First(&vt).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
+			return
+		}
+		// Cache the token
+		services.TokenCacheSvc.CacheVerificationToken(vt)
 	}
+
 	var user models.User
 	if err := database.DB.First(&user, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
@@ -251,8 +274,19 @@ func (h *authHandler) VerifyEmail(c *gin.Context) {
 	now := time.Now()
 	user.EmailVerified = &now
 	vt.Used = true
-	database.DB.Save(&user)
-	database.DB.Save(&vt)
+	if err := database.DB.Save(&user).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Failed to update user"})
+		return
+	}
+	if err := database.DB.Save(&vt).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Failed to update token"})
+		return
+	}
+
+	// Invalidate cached tokens
+	services.TokenCacheSvc.InvalidateVerificationToken(vt.ID)
+	services.TokenCacheSvc.InvalidateUserVerificationTokens(user.ID, models.EmailVerification)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Email verified"})
 }
 
@@ -274,7 +308,17 @@ func (h *authHandler) RequestPhoneVerification(c *gin.Context) {
 		Type:      "phone_verification",
 		ExpiresAt: time.Now().Add(30 * time.Minute),
 	}
-	database.DB.Create(&t)
+	if err := database.DB.Create(&t).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Failed to create verification token"})
+		return
+	}
+
+	// Cache the verification token
+	services.TokenCacheSvc.CacheVerificationToken(&t)
+
+	// Invalidate user's verification tokens cache for this type
+	services.TokenCacheSvc.InvalidateUserVerificationTokens(user.ID, models.PhoneVerification)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Verification SMS sent", "token": token})
 }
 
@@ -287,11 +331,19 @@ func (h *authHandler) VerifyPhone(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	var vt models.VerificationToken
-	if err := database.DB.Where("user_id = ? AND token = ? AND type = ? AND used = ? AND expires_at > ?", id, input.Token, "phone_verification", false, time.Now()).First(&vt).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
-		return
+
+	// Try to get verification token from cache first
+	vt, err := services.TokenCacheSvc.GetVerificationTokenByValue(input.Token)
+	if err != nil {
+		// Cache miss, get from database
+		if err := database.DB.Where("user_id = ? AND token = ? AND type = ? AND used = ? AND expires_at > ?", id, input.Token, "phone_verification", false, time.Now()).First(&vt).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
+			return
+		}
+		// Cache the token
+		services.TokenCacheSvc.CacheVerificationToken(vt)
 	}
+
 	var user models.User
 	if err := database.DB.First(&user, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
@@ -300,8 +352,19 @@ func (h *authHandler) VerifyPhone(c *gin.Context) {
 	now := time.Now()
 	user.PhoneVerified = &now
 	vt.Used = true
-	database.DB.Save(&user)
-	database.DB.Save(&vt)
+	if err := database.DB.Save(&user).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Failed to update user"})
+		return
+	}
+	if err := database.DB.Save(&vt).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Failed to update token"})
+		return
+	}
+
+	// Invalidate cached tokens
+	services.TokenCacheSvc.InvalidateVerificationToken(vt.ID)
+	services.TokenCacheSvc.InvalidateUserVerificationTokens(user.ID, models.PhoneVerification)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Phone verified"})
 }
 
@@ -329,13 +392,23 @@ func (h *authHandler) RequestPasswordReset(c *gin.Context) {
 		Type:      "password_reset",
 		ExpiresAt: time.Now().Add(30 * time.Minute),
 	}
-	database.DB.Create(&t)
+	if err := database.DB.Create(&t).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Failed to create verification token"})
+		return
+	}
+
+	// Cache the verification token
+	services.TokenCacheSvc.CacheVerificationToken(&t)
+
+	// Invalidate user's verification tokens cache for this type
+	services.TokenCacheSvc.InvalidateUserVerificationTokens(user.ID, models.PasswordReset)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Password reset link sent", "token": token})
 }
 
 func (h *authHandler) ResetPassword(c *gin.Context) {
 	var input struct {
-		UserID      uint   `json:"user_id"`
+		UserID      string `json:"user_id"`
 		Token       string `json:"token"`
 		NewPassword string `json:"new_password"`
 	}
@@ -343,20 +416,50 @@ func (h *authHandler) ResetPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	var vt models.VerificationToken
-	if err := database.DB.Where("user_id = ? AND token = ? AND type = ? AND used = ? AND expires_at > ?", input.UserID, input.Token, "password_reset", false, time.Now()).First(&vt).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
+
+	// Parse user ID from string to UUID
+	userID, err := uuid.Parse(input.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
+
+	// Try to get verification token from cache first
+	vt, err := services.TokenCacheSvc.GetVerificationTokenByValue(input.Token)
+	if err != nil {
+		// Cache miss, get from database
+		if err := database.DB.Where("user_id = ? AND token = ? AND type = ? AND used = ? AND expires_at > ?", userID, input.Token, "password_reset", false, time.Now()).First(&vt).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
+			return
+		}
+		// Cache the token
+		services.TokenCacheSvc.CacheVerificationToken(vt)
+	}
+
 	var user models.User
-	if err := database.DB.First(&user, input.UserID).Error; err != nil {
+	if err := database.DB.First(&user, userID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
-	hash, _ := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to hash password"})
+		return
+	}
 	user.PasswordHash = string(hash)
 	vt.Used = true
-	database.DB.Save(&user)
-	database.DB.Save(&vt)
+	if err := database.DB.Save(&user).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Failed to update user"})
+		return
+	}
+	if err := database.DB.Save(&vt).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Failed to update token"})
+		return
+	}
+
+	// Invalidate cached tokens
+	services.TokenCacheSvc.InvalidateVerificationToken(vt.ID)
+	services.TokenCacheSvc.InvalidateUserVerificationTokens(user.ID, models.PasswordReset)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Password reset"})
 }

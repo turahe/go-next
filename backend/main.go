@@ -1,7 +1,7 @@
 package main
 
 import (
-	"wordpress-go-next/backend/cmd"
+	"go-next/cmd"
 )
 
 func main() {

@@ -1,15 +1,16 @@
 package controllers
 
 import (
-	"fmt"
+	"go-next/internal/http/requests"
+	"go-next/internal/http/responses"
 	"net/http"
-	"strconv"
-	"wordpress-go-next/backend/internal/http/requests"
 
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/services"
+	"go-next/internal/models"
+	"go-next/internal/services"
+	"go-next/pkg/database"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type CategoryHandler interface {
@@ -35,19 +36,54 @@ func NewCategoryHandler(categoryService services.CategoryService, mediaService s
 
 // GetCategories godoc
 // @Summary      List categories
-// @Description  Get all categories
+// @Description  Get all categories with pagination
 // @Tags         categories
 // @Produce      json
-// @Success      200  {array}   models.Category
-// @Failure      500  {object}  map[string]string
+// @Param        page      query     int    false "Page number"
+// @Param        per_page  query     int    false "Items per page"
+// @Param        search    query     string false "Search term"
+// @Param        parent    query     string false "Parent category ID filter"
+// @Success      200       {object}  responses.LaravelPaginationResponse
+// @Failure      500       {object}  map[string]string
 // @Router       /categories [get]
 func (h *categoryHandler) GetCategories(c *gin.Context) {
-	categories, err := h.CategoryService.GetAllCategories()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch categories"})
+	params := responses.ParsePaginationParams(c)
+	search := c.Query("search")
+	parentID := c.Query("parent")
+
+	offset := (params.Page - 1) * params.PerPage
+
+	var categories []models.Category
+	var total int64
+
+	query := database.DB.Model(&models.Category{})
+
+	// Apply search filter
+	if search != "" {
+		query = query.Where("name ILIKE ? OR description ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	// Apply parent filter
+	if parentID != "" {
+		if parsedID, err := uuid.Parse(parentID); err == nil {
+			query = query.Where("parent_id = ?", parsedID)
+		}
+	}
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		responses.SendError(c, http.StatusInternalServerError, "Failed to count categories")
 		return
 	}
-	c.JSON(http.StatusOK, categories)
+
+	// Get paginated categories
+	if err := query.Offset(offset).Limit(params.PerPage).Order("record_ordering ASC").Find(&categories).Error; err != nil {
+		responses.SendError(c, http.StatusInternalServerError, "Failed to fetch categories")
+		return
+	}
+
+	// Send Laravel-style pagination response
+	responses.SendLaravelPaginationWithMessage(c, "Categories retrieved successfully", categories, total, int64(params.Page), int64(params.PerPage))
 }
 
 // GetCategory godoc
@@ -90,8 +126,8 @@ func (h *categoryHandler) CreateCategory(c *gin.Context) {
 		Name:        reqParams.Name,
 		Description: reqParams.Description,
 	}
-	if reqParams.ParentID > 0 {
-		category.ParentID = &reqParams.ParentID
+	if reqParams.ParentID != nil {
+		category.ParentID = reqParams.ParentID
 	}
 	file, fileHeader, err := c.Request.FormFile("image")
 	if err == nil && file != nil && fileHeader != nil {
@@ -185,10 +221,9 @@ func (h *categoryHandler) CreateCategoryNested(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	var parentID *int64
+	var parentID *uuid.UUID
 	if pid := c.Query("parent_id"); pid != "" {
-		var parsed int64
-		if _, err := fmt.Sscan(pid, &parsed); err == nil {
+		if parsed, err := uuid.Parse(pid); err == nil {
 			parentID = &parsed
 		}
 	}
@@ -212,19 +247,18 @@ func (h *categoryHandler) CreateCategoryNested(c *gin.Context) {
 // @Failure      500   {object}  map[string]string
 // @Router       /categories/{id}/move [post]
 func (h *categoryHandler) MoveCategoryNested(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
 		return
 	}
-	var parentID *int64
+	var parentID *uuid.UUID
 	if pid := c.Query("parent_id"); pid != "" {
-		var parsed int64
-		if _, err := fmt.Sscan(pid, &parsed); err == nil {
+		if parsed, err := uuid.Parse(pid); err == nil {
 			parentID = &parsed
 		}
 	}
-	if err := h.CategoryService.MoveNested(uint(id), parentID); err != nil {
+	if err := h.CategoryService.MoveNested(id, parentID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move category (nested)"})
 		return
 	}
@@ -240,12 +274,12 @@ func (h *categoryHandler) MoveCategoryNested(c *gin.Context) {
 // @Failure      500  {object}  map[string]string
 // @Router       /categories/{id}/nested [delete]
 func (h *categoryHandler) DeleteCategoryNested(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
 		return
 	}
-	if err := h.CategoryService.DeleteNested(uint(id)); err != nil {
+	if err := h.CategoryService.DeleteNested(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete category (nested)"})
 		return
 	}
@@ -262,12 +296,12 @@ func (h *categoryHandler) DeleteCategoryNested(c *gin.Context) {
 // @Failure      404  {object}  map[string]string
 // @Router       /categories/{id}/children [get]
 func (h *categoryHandler) GetChildrenCategories(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
 		return
 	}
-	children, err := h.CategoryService.GetChildrenCategories(uint(id))
+	children, err := h.CategoryService.GetChildrenCategories(id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch children"})
 		return

@@ -2,8 +2,8 @@ package services
 
 import (
 	"time"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/pkg/database"
+	"go-next/internal/models"
+	"go-next/pkg/database"
 )
 
 type UserService interface {

@@ -1,9 +1,10 @@
 package services
 
 import (
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/pkg/database"
+	"go-next/internal/models"
+	"go-next/pkg/database"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -13,13 +14,13 @@ type CategoryService interface {
 	CreateCategory(category *models.Category) error
 	UpdateCategory(category *models.Category) error
 	DeleteCategory(id string) error
-	CreateNested(category *models.Category, parentID *int64) error
-	MoveNested(id uint, newParentID *int64) error
-	DeleteNested(id uint) error
-	GetSiblingCategory(id uint) ([]models.Category, error)
-	GetParentCategory(id uint) (*models.Category, error)
-	GetDescendantCategories(id uint) ([]models.Category, error)
-	GetChildrenCategories(id uint) ([]models.Category, error)
+	CreateNested(category *models.Category, parentID *uuid.UUID) error
+	MoveNested(id uuid.UUID, newParentID *uuid.UUID) error
+	DeleteNested(id uuid.UUID) error
+	GetSiblingCategory(id uuid.UUID) ([]models.Category, error)
+	GetParentCategory(id uuid.UUID) (*models.Category, error)
+	GetDescendantCategories(id uuid.UUID) ([]models.Category, error)
+	GetChildrenCategories(id uuid.UUID) ([]models.Category, error)
 }
 
 type categoryService struct{}
@@ -31,9 +32,17 @@ func (s *categoryService) GetAllCategories() ([]models.Category, error) {
 }
 
 func (s *categoryService) GetCategoryByID(id string) (*models.Category, error) {
+	categoryID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, err
+	}
+
 	var category models.Category
-	err := database.DB.First(&category, id).Error
-	return &category, err
+	err = database.DB.First(&category, categoryID).Error
+	if err != nil {
+		return nil, err
+	}
+	return &category, nil
 }
 
 func (s *categoryService) CreateCategory(category *models.Category) error {
@@ -41,75 +50,79 @@ func (s *categoryService) CreateCategory(category *models.Category) error {
 }
 
 func (s *categoryService) UpdateCategory(category *models.Category) error {
-	return database.DB.Model(&models.Category{}).Where("id = ?", category.ID).Updates(map[string]interface{}{
-		"name":        category.Name,
-		"description": category.Description,
-	}).Error
+	return database.DB.Save(category).Error
 }
 
 func (s *categoryService) DeleteCategory(id string) error {
-	return database.DB.Delete(&models.Category{}, id).Error
+	categoryID, err := uuid.Parse(id)
+	if err != nil {
+		return err
+	}
+	return database.DB.Delete(&models.Category{}, categoryID).Error
 }
 
-func (s *categoryService) CreateNested(category *models.Category, parentID *int64) error {
+func (s *categoryService) CreateNested(category *models.Category, parentID *uuid.UUID) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
-		var left int64
-		var depth int64 = 0
 		if parentID != nil {
 			var parent models.Category
-			if err := tx.First(&parent, *parentID).Error; err != nil {
+			if err := tx.First(&parent, parentID).Error; err != nil {
 				return err
 			}
-			if parent.RecordRight == nil {
+			if parent.RecordRight == 0 {
 				return gorm.ErrRecordNotFound
 			}
-			left = *parent.RecordRight
-			depth = 0
-			if parent.RecordDept != nil {
-				depth = *parent.RecordDept + 1
-			}
-			tx.Model(&models.Category{}).Where("record_right >= ?", left).Update("record_right", gorm.Expr("record_right + 2"))
-			tx.Model(&models.Category{}).Where("record_left > ?", left-1).Update("record_left", gorm.Expr("record_left + 2"))
+
+			// Update parent's right value
+			tx.Model(&models.Category{}).
+				Where("record_right >= ?", parent.RecordRight).
+				Update("record_right", gorm.Expr("record_right + 2"))
+			tx.Model(&models.Category{}).
+				Where("record_left > ?", parent.RecordRight).
+				Update("record_left", gorm.Expr("record_left + 2"))
+
+			category.RecordLeft = parent.RecordRight
+			category.RecordRight = parent.RecordRight + 1
+			category.RecordDept = parent.RecordDept + 1
+			category.ParentID = parentID
 		} else {
-			tx.Model(&models.Category{}).Select("COALESCE(MAX(record_right), 0)").Scan(&left)
-			left++
+			// Create as root
+			var maxRight int
+			tx.Model(&models.Category{}).Select("COALESCE(MAX(record_right), 0)").Scan(&maxRight)
+			category.RecordLeft = maxRight + 1
+			category.RecordRight = maxRight + 2
+			category.RecordDept = 0
+			category.ParentID = nil
 		}
-		right := left + 1
-		category.RecordLeft = &left
-		category.RecordRight = &right
-		category.RecordDept = &depth
-		category.ParentID = parentID
+
 		return tx.Create(category).Error
 	})
 }
 
-func (s *categoryService) MoveNested(id uint, newParentID *int64) error {
+func (s *categoryService) MoveNested(id uuid.UUID, newParentID *uuid.UUID) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		var node models.Category
 		if err := tx.First(&node, id).Error; err != nil {
 			return err
 		}
-		if node.RecordLeft == nil || node.RecordRight == nil {
+		if node.RecordLeft == 0 || node.RecordRight == 0 {
 			return gorm.ErrRecordNotFound
 		}
-		left := *node.RecordLeft
-		right := *node.RecordRight
+		left := node.RecordLeft
+		right := node.RecordRight
 		width := right - left + 1
 
-		var newParentRight int64
-		var newDepth int64 = 0
+		var newParentRight int
+		var newDepth int = 0
 		if newParentID != nil {
 			var newParent models.Category
-			if err := tx.First(&newParent, *newParentID).Error; err != nil {
+			if err := tx.First(&newParent, newParentID).Error; err != nil {
 				return err
 			}
-			if newParent.RecordRight == nil {
+			if newParent.RecordRight == 0 {
 				return gorm.ErrRecordNotFound
 			}
-			newParentRight = *newParent.RecordRight
-			if newParent.RecordDept != nil {
-				newDepth = *newParent.RecordDept + 1
-			}
+			newParentRight = newParent.RecordRight
+			newDepth = newParent.RecordDept + 1
 		} else {
 			tx.Model(&models.Category{}).Select("COALESCE(MAX(record_right), 0)").Scan(&newParentRight)
 			newParentRight++
@@ -119,14 +132,14 @@ func (s *categoryService) MoveNested(id uint, newParentID *int64) error {
 			return gorm.ErrInvalidData
 		}
 
-		var offset int64
+		var offset int
 		if newParentRight > right {
 			offset = newParentRight - right - 1
 		} else {
 			offset = newParentRight - left
 		}
 
-		temp := int64(-1)
+		temp := -1
 		tx.Model(&models.Category{}).
 			Where("record_left >= ? AND record_right <= ?", left, right).
 			Update("record_left", gorm.Expr("record_left * ?", temp))
@@ -148,10 +161,7 @@ func (s *categoryService) MoveNested(id uint, newParentID *int64) error {
 			tx.Model(&models.Category{}).
 				Where("record_right >= ?", newParentRight-width).
 				Update("record_right", gorm.Expr("record_right + ?", width))
-			depthDiff := newDepth
-			if node.RecordDept != nil {
-				depthDiff = newDepth - *node.RecordDept
-			}
+			depthDiff := newDepth - node.RecordDept
 			tx.Model(&models.Category{}).
 				Where("record_left <= ? AND record_right >= ?", temp*left, temp*right).
 				Updates(map[string]interface{}{
@@ -166,10 +176,7 @@ func (s *categoryService) MoveNested(id uint, newParentID *int64) error {
 			tx.Model(&models.Category{}).
 				Where("record_right >= ?", newParentRight).
 				Update("record_right", gorm.Expr("record_right + ?", width))
-			depthDiff := newDepth
-			if node.RecordDept != nil {
-				depthDiff = newDepth - *node.RecordDept
-			}
+			depthDiff := newDepth - node.RecordDept
 			tx.Model(&models.Category{}).
 				Where("record_left <= ? AND record_right >= ?", temp*left, temp*right).
 				Updates(map[string]interface{}{
@@ -185,73 +192,79 @@ func (s *categoryService) MoveNested(id uint, newParentID *int64) error {
 	})
 }
 
-func (s *categoryService) DeleteNested(id uint) error {
+func (s *categoryService) DeleteNested(id uuid.UUID) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
-		var node models.Category
-		if err := tx.First(&node, id).Error; err != nil {
+		var category models.Category
+		if err := tx.First(&category, id).Error; err != nil {
 			return err
 		}
-		if node.RecordLeft == nil || node.RecordRight == nil {
+		if category.RecordLeft == 0 || category.RecordRight == 0 {
 			return gorm.ErrRecordNotFound
 		}
-		left := *node.RecordLeft
-		right := *node.RecordRight
+
+		left := category.RecordLeft
+		right := category.RecordRight
 		width := right - left + 1
+
+		// Delete the category and all its descendants
 		tx.Where("record_left >= ? AND record_right <= ?", left, right).Delete(&models.Category{})
-		tx.Model(&models.Category{}).Where("record_left > ?", right).Update("record_left", gorm.Expr("record_left - ?", width))
-		tx.Model(&models.Category{}).Where("record_right > ?", right).Update("record_right", gorm.Expr("record_right - ?", width))
+
+		// Update the remaining nodes
+		tx.Model(&models.Category{}).
+			Where("record_left > ?", right).
+			Update("record_left", gorm.Expr("record_left - ?", width))
+		tx.Model(&models.Category{}).
+			Where("record_right > ?", right).
+			Update("record_right", gorm.Expr("record_right - ?", width))
+
 		return nil
 	})
 }
 
-func (s *categoryService) GetSiblingCategory(id uint) ([]models.Category, error) {
-	var node models.Category
-	if err := database.DB.First(&node, id).Error; err != nil {
+func (s *categoryService) GetSiblingCategory(id uuid.UUID) ([]models.Category, error) {
+	var category models.Category
+	if err := database.DB.First(&category, id).Error; err != nil {
 		return nil, err
 	}
+
 	var siblings []models.Category
-	if node.ParentID != nil {
-		database.DB.Where("parent_id = ? AND id != ?", *node.ParentID, id).Find(&siblings)
-	} else {
-		database.DB.Where("parent_id IS NULL AND id != ?", id).Find(&siblings)
-	}
-	return siblings, nil
+	err := database.DB.Where("parent_id = ? AND id != ?", category.ParentID, id).Find(&siblings).Error
+	return siblings, err
 }
 
-func (s *categoryService) GetParentCategory(id uint) (*models.Category, error) {
-	var node models.Category
-	if err := database.DB.First(&node, id).Error; err != nil {
+func (s *categoryService) GetParentCategory(id uuid.UUID) (*models.Category, error) {
+	var category models.Category
+	if err := database.DB.First(&category, id).Error; err != nil {
 		return nil, err
 	}
-	if node.ParentID == nil {
-		return nil, nil
+
+	if category.ParentID == nil {
+		return nil, nil // No parent
 	}
+
 	var parent models.Category
-	if err := database.DB.First(&parent, *node.ParentID).Error; err != nil {
+	err := database.DB.First(&parent, category.ParentID).Error
+	if err != nil {
 		return nil, err
 	}
 	return &parent, nil
 }
 
-func (s *categoryService) GetDescendantCategories(id uint) ([]models.Category, error) {
-	var node models.Category
-	if err := database.DB.First(&node, id).Error; err != nil {
+func (s *categoryService) GetDescendantCategories(id uuid.UUID) ([]models.Category, error) {
+	var category models.Category
+	if err := database.DB.First(&category, id).Error; err != nil {
 		return nil, err
 	}
-	if node.RecordLeft == nil || node.RecordRight == nil {
-		return nil, gorm.ErrRecordNotFound
-	}
+
 	var descendants []models.Category
-	database.DB.Where("record_left > ? AND record_right < ?", *node.RecordLeft, *node.RecordRight).Find(&descendants)
-	return descendants, nil
+	err := database.DB.Where("record_left > ? AND record_right < ?", category.RecordLeft, category.RecordRight).Find(&descendants).Error
+	return descendants, err
 }
 
-func (s *categoryService) GetChildrenCategories(id uint) ([]models.Category, error) {
+func (s *categoryService) GetChildrenCategories(id uuid.UUID) ([]models.Category, error) {
 	var children []models.Category
-	if err := database.DB.Where("parent_id = ?", id).Find(&children).Error; err != nil {
-		return nil, err
-	}
-	return children, nil
+	err := database.DB.Where("parent_id = ?", id).Find(&children).Error
+	return children, err
 }
 
 var CategorySvc CategoryService = &categoryService{}

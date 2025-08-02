@@ -1,8 +1,8 @@
 package services
 
 import (
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/pkg/database"
+	"go-next/internal/models"
+	"go-next/pkg/database"
 )
 
 type UserRoleService interface {

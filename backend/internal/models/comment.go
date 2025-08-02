@@ -3,37 +3,94 @@ package models
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
+// Comment represents a comment on a post
 type Comment struct {
-	ID             uint    `gorm:"primaryKey"`
-	Content        string  `gorm:"type:text;not null"`
-	UserID         uint    `gorm:"not null"`
-	User           User    `gorm:"foreignKey:UserID"`
-	PostID         uint    `gorm:"not null"`
-	Post           Post    `gorm:"foreignKey:PostID"`
-	RecordLeft     *int64  `gorm:"column:record_left"`
-	RecordRight    *int64  `gorm:"column:record_right"`
-	RecordDept     *int64  `gorm:"column:record_dept"`
-	RecordOrdering *int64  `gorm:"column:record_ordering"`
-	ParentID       *int64  `gorm:"column:parent_id"`
-	Medias         []Media `gorm:"foreignKey:modelId"`
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	BaseModelWithOrdering
+	Content    string     `json:"content" gorm:"type:text;not null" validate:"required,min=1"`
+	Status     string     `json:"status" gorm:"default:'pending';index" validate:"oneof=pending approved rejected"`
+	IsPublic   bool       `json:"is_public" gorm:"default:true;index"`
+	UserID     uuid.UUID  `json:"user_id" gorm:"type:uuid;not null;index" validate:"required"`
+	PostID     uuid.UUID  `json:"post_id" gorm:"type:uuid;not null;index" validate:"required"`
+	ApprovedAt *time.Time `json:"approved_at,omitempty" gorm:"index"`
+
+	// Relationships
+	User     *User     `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	Post     *Post     `json:"post,omitempty" gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE"`
+	Parent   *Comment  `json:"parent,omitempty" gorm:"foreignKey:ParentID;constraint:OnDelete:CASCADE"`
+	Children []Comment `json:"children,omitempty" gorm:"foreignKey:ParentID;constraint:OnDelete:CASCADE"`
 }
 
+// TableName specifies the table name for Comment
 func (Comment) TableName() string {
 	return "comments"
 }
 
-func (c *Comment) BeforeCreate(*gorm.DB) error {
-	c.CreatedAt = time.Now()
-	c.UpdatedAt = time.Now()
+// BeforeCreate hook for Comment
+func (c *Comment) BeforeCreate(tx *gorm.DB) error {
+	if c.ID == uuid.Nil {
+		c.ID = uuid.New()
+	}
 	return nil
 }
 
-func (c *Comment) BeforeUpdate(*gorm.DB) error {
-	c.UpdatedAt = time.Now()
+// BeforeUpdate hook for Comment
+func (c *Comment) BeforeUpdate(tx *gorm.DB) error {
 	return nil
+}
+
+// IsApproved checks if the comment is approved
+func (c *Comment) IsApproved() bool {
+	return c.Status == "approved"
+}
+
+// IsRejected checks if the comment is rejected
+func (c *Comment) IsRejected() bool {
+	return c.Status == "rejected"
+}
+
+// IsPending checks if the comment is pending approval
+func (c *Comment) IsPending() bool {
+	return c.Status == "pending"
+}
+
+// IsRoot checks if the comment is a root comment
+func (c *Comment) IsRoot() bool {
+	return c.ParentID == nil
+}
+
+// HasChildren checks if the comment has children
+func (c *Comment) HasChildren() bool {
+	return len(c.Children) > 0
+}
+
+// GetDepth returns the depth of the comment in the thread
+func (c *Comment) GetDepth() int {
+	return c.RecordDept
+}
+
+// Approve approves the comment
+func (c *Comment) Approve() {
+	c.Status = "approved"
+	now := time.Now()
+	c.ApprovedAt = &now
+}
+
+// Reject rejects the comment
+func (c *Comment) Reject() {
+	c.Status = "rejected"
+	c.ApprovedAt = nil
+}
+
+// MakePublic makes the comment public
+func (c *Comment) MakePublic() {
+	c.IsPublic = true
+}
+
+// MakePrivate makes the comment private
+func (c *Comment) MakePrivate() {
+	c.IsPublic = false
 }

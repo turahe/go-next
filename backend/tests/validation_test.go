@@ -12,7 +12,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	internal "wordpress-go-next/backend/internal"
+	internal "go-next/internal"
 )
 
 type ValidationErrorResponse struct {

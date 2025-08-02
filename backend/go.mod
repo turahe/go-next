@@ -1,4 +1,4 @@
-module wordpress-go-next/backend
+module go-next
 
 go 1.23.0
 
@@ -8,7 +8,6 @@ require (
 	github.com/bytedance/sonic v1.13.3
 	github.com/casbin/casbin/v2 v2.108.0
 	github.com/casbin/gorm-adapter/v3 v3.32.0
-	github.com/casdoor/oss v1.8.0
 	github.com/getsentry/sentry-go v0.34.0
 	github.com/getsentry/sentry-go/logrus v0.34.0
 	github.com/gin-gonic/gin v1.10.1
@@ -16,6 +15,7 @@ require (
 	github.com/go-playground/validator/v10 v10.26.0
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/redis/go-redis/v9 v9.11.0
 	github.com/sirupsen/logrus v1.9.3
@@ -24,13 +24,14 @@ require (
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.4
+	github.com/ulule/limiter/v3 v3.11.2
 	golang.org/x/crypto v0.39.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/driver/sqlserver v1.6.0
-	gorm.io/gorm v1.30.0
+	gorm.io/gorm v1.30.1
 )
 
 require (
@@ -85,17 +86,16 @@ require (
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.0 // indirect
-	github.com/ulule/limiter/v3 v3.11.2 // indirect
 	golang.org/x/arch v0.18.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
+	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/text v0.26.0 // indirect
+	golang.org/x/text v0.27.0 // indirect
 	golang.org/x/tools v0.34.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	gorm.io/plugin/dbresolver v1.5.3 // indirect
+	gorm.io/plugin/dbresolver v1.6.2 // indirect
 	modernc.org/libc v1.22.2 // indirect
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect
