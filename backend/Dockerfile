@@ -15,10 +15,6 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Generate swagger docs
-RUN go install github.com/swaggo/swag/cmd/swag@latest
-RUN swag init -g main.go -o docs
-
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 
@@ -37,10 +33,10 @@ COPY --from=builder /app/main .
 COPY .env .
 
 # Create necessary directories
-RUN mkdir -p log storage
+RUN mkdir -p log storage data
 
 # Expose port
 EXPOSE 8080
 
 # Run the binary
-CMD ["./main", "server", "--port", "8080"] 
+CMD ["./main", "server"] 

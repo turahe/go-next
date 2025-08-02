@@ -37,8 +37,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-      target: development
+      dockerfile: Dockerfile
     container_name: go-next-backend
     ports:
       - "8080:8080"
@@ -64,18 +63,14 @@ services:
       - MAIL_PASSWORD=
       - MAIL_FROM=noreply@example.com
     volumes:
-      - .:/app
-      - backend_data:/app/data
-      - ./log:/app/log
-      - ./storage:/app/storage
-      - ./data:/app/data
-      - /app/tmp
+      - ./log:/root/log
+      - ./storage:/root/storage
+      - ./data:/root/data
     networks:
       - backend-network
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["go", "run", "main.go", "server"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

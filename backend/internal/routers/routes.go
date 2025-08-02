@@ -30,10 +30,6 @@ func RegisterRoutes(r *gin.Engine) {
 	notificationHandler := controllers.NewNotificationHandler()
 	wsHandler := controllers.NewWebSocketHandler(wsHub)
 
-	r.GET("/health", func(c *gin.Context) {
-		c.String(200, "OK")
-	})
-
 	r.POST("/api/register", authHandler.Register)
 	r.POST("/api/admin/register", adminAuthHandler.Register)
 	r.POST("/api/login", authHandler.Login)
@@ -48,7 +44,6 @@ func RegisterRoutes(r *gin.Engine) {
 		posts.POST("", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "POST"), postHandler.CreatePost)
 		posts.PUT(":id", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "PUT"), postHandler.UpdatePost)
 		posts.DELETE(":id", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "DELETE"), postHandler.DeletePost)
-		posts.GET(":post_id/comments", commentHandler.GetCommentsByPost)
 	}
 
 	// Categories
