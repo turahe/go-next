@@ -2,15 +2,16 @@ package dto
 
 import (
 	"time"
-	"wordpress-go-next/backend/internal/models"
+	"github.com/google/uuid"
+	"go-next/internal/models"
 )
 
 type CommentDTO struct {
-	ID         uint64        `json:"id"`
-	UserID     uint64        `json:"userId"`
-	PostID     uint64        `json:"postId"`
+	ID         uuid.UUID     `json:"id"`
+	UserID     uuid.UUID     `json:"userId"`
+	PostID     uuid.UUID     `json:"postId"`
 	Status     string        `json:"status"`
-	ParentID   *uint64       `json:"parentId,omitempty"`
+	ParentID   *uuid.UUID    `json:"parentId,omitempty"`
 	Content    *string       `json:"content,omitempty"`
 	CreatedAt  time.Time     `json:"createdAt"`
 	UpdatedAt  time.Time     `json:"updatedAt"`
@@ -21,12 +22,12 @@ type CommentDTO struct {
 
 func ToCommentDTO(c *models.Comment) *CommentDTO {
 	var content *string
-	if c.Content != nil {
-		content = &c.Content.Content
+	if c.Content != "" {
+		content = &c.Content
 	}
 	var user *UserDTO
-	if c.User.ID != 0 {
-		user = ToUserDTO(&c.User)
+	if c.User != nil && c.User.ID != uuid.Nil {
+		user = ToUserDTO(c.User)
 	}
 	children := make([]*CommentDTO, len(c.Children))
 	for i, child := range c.Children {

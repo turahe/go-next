@@ -1,12 +1,14 @@
 package dto
 
 import (
+	"go-next/internal/models"
 	"time"
-	"wordpress-go-next/backend/internal/models"
+
+	"github.com/google/uuid"
 )
 
 type UserDTO struct {
-	ID            uint64     `json:"id"`
+	ID            uuid.UUID  `json:"id"`
 	Username      string     `json:"username"`
 	Email         string     `json:"email"`
 	Phone         *string    `json:"phone,omitempty"`
@@ -23,11 +25,15 @@ func ToUserDTO(u *models.User) *UserDTO {
 	for i, r := range u.Roles {
 		roles[i] = r.Name
 	}
+	var phone *string
+	if u.Phone != "" {
+		phone = &u.Phone
+	}
 	return &UserDTO{
 		ID:            u.ID,
 		Username:      u.Username,
 		Email:         u.Email,
-		Phone:         u.Phone,
+		Phone:         phone,
 		EmailVerified: u.EmailVerified,
 		PhoneVerified: u.PhoneVerified,
 		IsActive:      u.IsActive,

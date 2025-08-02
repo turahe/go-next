@@ -2,16 +2,17 @@ package dto
 
 import (
 	"time"
-	"wordpress-go-next/backend/internal/models"
+	"github.com/google/uuid"
+	"go-next/internal/models"
 )
 
 type CategoryDTO struct {
-	ID          uint64             `json:"id"`
+	ID          uuid.UUID          `json:"id"`
 	Name        string             `json:"name"`
 	Slug        string             `json:"slug"`
 	Description string             `json:"description,omitempty"`
 	IsActive    bool               `json:"isActive"`
-	ParentID    *uint64            `json:"parentId,omitempty"`
+	ParentID    *uuid.UUID        `json:"parentId,omitempty"`
 	Parent      *CategorySimpleDTO `json:"parent,omitempty"`
 	ChildCount  int                `json:"childCount"`
 	PostCount   int                `json:"postCount"`

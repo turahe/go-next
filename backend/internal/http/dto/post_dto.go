@@ -2,16 +2,17 @@ package dto
 
 import (
 	"time"
-	"wordpress-go-next/backend/internal/models"
+	"github.com/google/uuid"
+	"go-next/internal/models"
 )
 
 type PostDTO struct {
-	ID           uint64             `json:"id"`
+	ID           uuid.UUID          `json:"id"`
 	Title        string             `json:"title"`
 	Slug         string             `json:"slug"`
 	Excerpt      string             `json:"excerpt,omitempty"`
 	Status       string             `json:"status"`
-	CategoryID   uint64             `json:"categoryId"`
+	CategoryID   uuid.UUID          `json:"categoryId"`
 	Category     *CategorySimpleDTO `json:"category,omitempty"`
 	CommentCount int                `json:"commentCount"`
 	CreatedAt    time.Time          `json:"createdAt"`
@@ -19,13 +20,13 @@ type PostDTO struct {
 }
 
 type CategorySimpleDTO struct {
-	ID   uint64 `json:"id"`
-	Name string `json:"name"`
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
 }
 
 func ToPostDTO(p *models.Post) *PostDTO {
 	var cat *CategorySimpleDTO
-	if p.Category.ID != 0 {
+	if p.Category.ID != uuid.Nil {
 		cat = &CategorySimpleDTO{ID: p.Category.ID, Name: p.Category.Name}
 	}
 	return &PostDTO{
@@ -34,7 +35,7 @@ func ToPostDTO(p *models.Post) *PostDTO {
 		Slug:         p.Slug,
 		Excerpt:      p.Excerpt,
 		Status:       p.Status,
-		CategoryID:   uint64(p.CategoryID),
+		CategoryID:   *p.CategoryID,
 		Category:     cat,
 		CommentCount: len(p.Comments),
 		CreatedAt:    p.CreatedAt,

@@ -34,11 +34,19 @@ func (r *RedisService) SetWithExpiration(ctx context.Context, key string, value 
 	return r.Client.Set(ctx, key, value, expiration).Err()
 }
 
+func (r *RedisService) SetWithTTL(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+	return r.Client.Set(ctx, key, value, expiration).Err()
+}
+
 func (r *RedisService) Get(ctx context.Context, key string) (string, error) {
 	return r.Client.Get(ctx, key).Result()
 }
 
 func (r *RedisService) Del(ctx context.Context, keys ...string) error {
+	return r.Client.Del(ctx, keys...).Err()
+}
+
+func (r *RedisService) Delete(ctx context.Context, keys ...string) error {
 	return r.Client.Del(ctx, keys...).Err()
 }
 
@@ -60,4 +68,23 @@ func (r *RedisService) SetNX(ctx context.Context, key string, value interface{},
 
 func (r *RedisService) Close() error {
 	return r.Client.Close()
+}
+
+func (r *RedisService) DeletePattern(ctx context.Context, pattern string) error {
+	keys, err := r.Client.Keys(ctx, pattern).Result()
+	if err != nil {
+		return err
+	}
+	if len(keys) > 0 {
+		return r.Client.Del(ctx, keys...).Err()
+	}
+	return nil
+}
+
+func (r *RedisService) GetKeysByPattern(ctx context.Context, pattern string) ([]string, error) {
+	return r.Client.Keys(ctx, pattern).Result()
+}
+
+func (r *RedisService) Ping(ctx context.Context) error {
+	return r.Client.Ping(ctx).Err()
 }

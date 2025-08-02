@@ -14,7 +14,7 @@ func RegisterRoutes(r *gin.Engine) {
 	authHandler := controllers.NewAuthHandler()
 	adminAuthHandler := controllers.NewAdminAuthHandler()
 	store, _ := storage.NewStorageService(config.GetConfig().Storage)
-	mediaSvc := services.NewMediaService(store)
+	mediaSvc := services.NewMediaService(store, services.GlobalRedisClient)
 	postHandler := controllers.NewPostHandler(services.PostSvc)
 	categoryHandler := controllers.NewCategoryHandler(services.CategorySvc, mediaSvc)
 	commentHandler := controllers.NewCommentHandler(services.CommentSvc)

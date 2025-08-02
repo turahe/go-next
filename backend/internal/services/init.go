@@ -5,10 +5,10 @@ import (
 	"log"
 	"time"
 
-	"wordpress-go-next/backend/pkg/database"
-	"wordpress-go-next/backend/pkg/logger"
-	"wordpress-go-next/backend/pkg/redis"
-	"wordpress-go-next/backend/pkg/storage"
+	"go-next/pkg/database"
+	"go-next/pkg/logger"
+	"go-next/pkg/redis"
+	"go-next/pkg/storage"
 )
 
 // ServiceManager manages all service instances
@@ -152,7 +152,7 @@ func (sm *ServiceManager) warmPostCache(ctx context.Context) error {
 // warmCategoryCache warms up category-related caches
 func (sm *ServiceManager) warmCategoryCache(ctx context.Context) error {
 	// Warm all categories cache
-	if _, err := sm.CategoryService.GetAllCategories(ctx); err != nil {
+	if _, err := sm.CategoryService.GetAllCategoriesWithContext(ctx); err != nil {
 		return err
 	}
 
@@ -167,7 +167,7 @@ func (sm *ServiceManager) warmCategoryCache(ctx context.Context) error {
 // warmRoleCache warms up role-related caches
 func (sm *ServiceManager) warmRoleCache(ctx context.Context) error {
 	// Warm all roles cache
-	if _, err := sm.RoleService.GetAllRoles(ctx); err != nil {
+	if _, err := sm.RoleService.GetAllRolesWithContext(ctx); err != nil {
 		return err
 	}
 

@@ -3,6 +3,7 @@ package services
 import (
 	"go-next/internal/models"
 	"go-next/pkg/database"
+	"go-next/pkg/redis"
 	"go-next/pkg/storage"
 	"mime/multipart"
 
@@ -18,11 +19,15 @@ type MediaService interface {
 }
 
 type mediaService struct {
-	Storage storage.StorageService
+	Storage      storage.StorageService
+	redisService *redis.RedisService
 }
 
-func NewMediaService(storageService storage.StorageService) MediaService {
-	return &mediaService{Storage: storageService}
+func NewMediaService(storageService storage.StorageService, redisService *redis.RedisService) MediaService {
+	return &mediaService{
+		Storage:      storageService,
+		redisService: redisService,
+	}
 }
 
 func (s *mediaService) UploadAndSaveMedia(file multipart.File, fileHeader *multipart.FileHeader, createdBy *uuid.UUID) (*models.Media, error) {
@@ -85,4 +90,4 @@ func (s *mediaService) GetMediaByType(mediaType string) ([]models.Media, error) 
 	return media, err
 }
 
-var MediaSvc MediaService = NewMediaService(nil) // Will be initialized properly in startup
+var MediaSvc MediaService = NewMediaService(nil, nil) // Will be initialized properly in startup

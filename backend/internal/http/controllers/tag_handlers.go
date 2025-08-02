@@ -3,12 +3,12 @@ package controllers
 import (
 	"net/http"
 	"strconv"
-	"wordpress-go-next/backend/internal/http/dto"
-	"wordpress-go-next/backend/internal/http/requests"
-	"wordpress-go-next/backend/internal/http/responses"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/internal/services"
-	"wordpress-go-next/backend/pkg/logger"
+	"go-next/internal/http/dto"
+	"go-next/internal/http/requests"
+	"go-next/internal/http/responses"
+	"go-next/internal/models"
+	"go-next/internal/services"
+	"go-next/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 )

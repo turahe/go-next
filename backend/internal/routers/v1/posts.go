@@ -1,8 +1,8 @@
 package v1
 
 import (
-	"wordpress-go-next/backend/internal/http/controllers"
-	"wordpress-go-next/backend/internal/http/middleware"
+	"go-next/internal/http/controllers"
+	"go-next/internal/http/middleware"
 
 	"github.com/gin-gonic/gin"
 )

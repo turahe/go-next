@@ -1,8 +1,10 @@
 package services
 
 import (
+	"context"
 	"go-next/internal/models"
 	"go-next/pkg/database"
+	"go-next/pkg/redis"
 )
 
 type RoleService interface {
@@ -11,9 +13,18 @@ type RoleService interface {
 	CreateRole(role *models.Role) error
 	UpdateRole(role *models.Role) error
 	DeleteRole(id string) error
+	GetAllRolesWithContext(ctx context.Context) ([]models.Role, error)
 }
 
-type roleService struct{}
+type roleService struct {
+	redisService *redis.RedisService
+}
+
+func NewRoleService(redisService *redis.RedisService) RoleService {
+	return &roleService{
+		redisService: redisService,
+	}
+}
 
 func (s *roleService) GetAllRoles() ([]models.Role, error) {
 	var roles []models.Role
@@ -37,6 +48,12 @@ func (s *roleService) UpdateRole(role *models.Role) error {
 
 func (s *roleService) DeleteRole(id string) error {
 	return database.DB.Delete(&models.Role{}, id).Error
+}
+
+func (s *roleService) GetAllRolesWithContext(ctx context.Context) ([]models.Role, error) {
+	var roles []models.Role
+	err := database.DB.Find(&roles).Error
+	return roles, err
 }
 
 var RoleSvc RoleService = &roleService{}

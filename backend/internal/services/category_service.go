@@ -1,8 +1,10 @@
 package services
 
 import (
+	"context"
 	"go-next/internal/models"
 	"go-next/pkg/database"
+	"go-next/pkg/redis"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -21,9 +23,19 @@ type CategoryService interface {
 	GetParentCategory(id uuid.UUID) (*models.Category, error)
 	GetDescendantCategories(id uuid.UUID) ([]models.Category, error)
 	GetChildrenCategories(id uuid.UUID) ([]models.Category, error)
+	GetAllCategoriesWithContext(ctx context.Context) ([]models.Category, error)
+	GetCategoryCount(ctx context.Context) (int64, error)
 }
 
-type categoryService struct{}
+type categoryService struct {
+	redisService *redis.RedisService
+}
+
+func NewCategoryService(redisService *redis.RedisService) CategoryService {
+	return &categoryService{
+		redisService: redisService,
+	}
+}
 
 func (s *categoryService) GetAllCategories() ([]models.Category, error) {
 	var categories []models.Category
@@ -265,6 +277,18 @@ func (s *categoryService) GetChildrenCategories(id uuid.UUID) ([]models.Category
 	var children []models.Category
 	err := database.DB.Where("parent_id = ?", id).Find(&children).Error
 	return children, err
+}
+
+func (s *categoryService) GetAllCategoriesWithContext(ctx context.Context) ([]models.Category, error) {
+	var categories []models.Category
+	err := database.DB.Find(&categories).Error
+	return categories, err
+}
+
+func (s *categoryService) GetCategoryCount(ctx context.Context) (int64, error) {
+	var count int64
+	err := database.DB.Model(&models.Category{}).Count(&count).Error
+	return count, err
 }
 
 var CategorySvc CategoryService = &categoryService{}
