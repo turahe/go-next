@@ -24,6 +24,10 @@ func RegisterRoutes(r *gin.Engine) {
 	userRoleHandler := controllers.NewUserRoleHandler(services.UserRoleSvc)
 	dashboardHandler := controllers.NewDashboardHandler()
 
+	// Initialize blog service and handler
+	blogSvc := services.NewBlogService()
+	blogHandler := controllers.NewBlogHandler(blogSvc)
+
 	// Initialize WebSocket hub and handlers
 	wsHub := services.NewHub()
 	go wsHub.Run()
@@ -44,6 +48,42 @@ func RegisterRoutes(r *gin.Engine) {
 		posts.POST("", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "POST"), postHandler.CreatePost)
 		posts.PUT(":id", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "PUT"), postHandler.UpdatePost)
 		posts.DELETE(":id", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "DELETE"), postHandler.DeletePost)
+	}
+
+	// Blog endpoints (public)
+	blog := api.Group("/blog")
+	{
+		// Public blog endpoints
+		blog.GET("/posts", blogHandler.GetPublicPosts)
+		blog.GET("/posts/featured", blogHandler.GetFeaturedPosts)
+		blog.GET("/posts/popular", blogHandler.GetPopularPosts)
+		blog.GET("/posts/:slug", blogHandler.GetPublicPost)
+		blog.GET("/posts/:post_id/related", blogHandler.GetRelatedPosts)
+		blog.GET("/search", blogHandler.SearchPosts)
+
+		// Blog statistics
+		blog.GET("/stats", blogHandler.GetBlogStats)
+		blog.GET("/stats/categories", blogHandler.GetCategoryStats)
+		blog.GET("/archive", blogHandler.GetMonthlyArchive)
+
+		// Categories and tags
+		blog.GET("/categories", blogHandler.GetPublicCategories)
+		blog.GET("/categories/:slug", blogHandler.GetCategoryBySlug)
+		blog.GET("/categories/:category_slug/posts", blogHandler.GetPostsByCategory)
+		blog.GET("/tags", blogHandler.GetPublicTags)
+		blog.GET("/tags/:slug", blogHandler.GetTagBySlug)
+		blog.GET("/tags/:tag_slug/posts", blogHandler.GetPostsByTag)
+
+		// View count tracking
+		blog.POST("/posts/:id/view", blogHandler.IncrementViewCount)
+
+		// Admin blog endpoints (require authentication)
+		blog.POST("/posts", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/blog/posts", "POST"), blogHandler.CreatePost)
+		blog.PUT("/posts/:id", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/blog/posts", "PUT"), blogHandler.UpdatePost)
+		blog.DELETE("/posts/:id", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/blog/posts", "DELETE"), blogHandler.DeletePost)
+		blog.POST("/posts/:id/publish", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/blog/posts", "POST"), blogHandler.PublishPost)
+		blog.POST("/posts/:id/unpublish", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/blog/posts", "POST"), blogHandler.UnpublishPost)
+		blog.POST("/posts/:id/archive", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/blog/posts", "POST"), blogHandler.ArchivePost)
 	}
 
 	// Categories
