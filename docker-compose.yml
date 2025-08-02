@@ -31,6 +31,148 @@ services:
           memory: 512M
           cpus: '0.25'
 
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: go-next-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_password}
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - backend-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.25'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+
+  # RabbitMQ for message queuing
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: go-next-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-admin}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-admin123}
+      - RABBITMQ_DEFAULT_VHOST=${RABBITMQ_VHOST:-/}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ./data/rabbitmq:/var/lib/rabbitmq
+    networks:
+      - backend-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+  # Meilisearch for search functionality
+  meilisearch:
+    image: getmeili/meilisearch:v1.7
+    container_name: go-next-meilisearch
+    environment:
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-your-super-secret-master-key}
+      - MEILI_ENV=development
+    ports:
+      - "7700:7700"
+    volumes:
+      - ./data/meilisearch:/meili_data
+    networks:
+      - backend-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7700/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+  # Mailpit for email testing
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: go-next-mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - backend-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8025"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+
+  # WAHA (WhatsApp HTTP API)
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: go-next-waha
+    environment:
+      - WHATSAPP_DEFAULT_ANSWER=Hello! This is an automated response.
+      - WHATSAPP_SESSION_FILES_PATH=/sessions
+      - WHATSAPP_SESSION_FILES_MODE=multi
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./data/waha/sessions:/sessions
+    networks:
+      - backend-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
   # Backend service
   backend:
     build:
@@ -54,14 +196,24 @@ services:
       - GIN_MODE=${GIN_MODE:-debug}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
       - APP_ENV=${APP_ENV:-development}
-      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_password}
-      - MAIL_HOST=${MAIL_HOST:-localhost}
+      - MAIL_HOST=${MAIL_HOST:-mailpit}
       - MAIL_PORT=${MAIL_PORT:-1025}
       - MAIL_USERNAME=${MAIL_USERNAME:-}
       - MAIL_PASSWORD=${MAIL_PASSWORD:-}
       - MAIL_FROM=${MAIL_FROM:-noreply@example.com}
+      - RABBITMQ_HOST=${RABBITMQ_HOST:-rabbitmq}
+      - RABBITMQ_PORT=${RABBITMQ_PORT:-5672}
+      - RABBITMQ_USER=${RABBITMQ_USER:-admin}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-admin123}
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
+      - MEILISEARCH_HOST=${MEILISEARCH_HOST:-meilisearch}
+      - MEILISEARCH_PORT=${MEILISEARCH_PORT:-7700}
+      - MEILISEARCH_MASTER_KEY=${MEILI_MASTER_KEY:-your-super-secret-master-key}
+      - WAHA_HOST=${WAHA_HOST:-waha}
+      - WAHA_PORT=${WAHA_PORT:-3000}
     volumes:
       - ./data/backend/log:/root/log
       - ./data/backend/storage:/root/storage
@@ -70,6 +222,16 @@ services:
       - backend-network
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+      waha:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -115,6 +277,45 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+  # Blog Frontend service
+  blog-frontend:
+    build:
+      context: blog-frontend
+      dockerfile: Dockerfile
+    container_name: go-next-blog-frontend
+    env_file:
+      - blog-frontend/.env
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_BLOG_API_BASE_URL=http://localhost:8080/api/v1/blog
+      - NEXT_PUBLIC_APP_NAME=Blog
+      - NEXT_PUBLIC_APP_DESCRIPTION=Discover amazing stories and insights
+      - NEXT_PUBLIC_APP_URL=http://localhost:3001
+    volumes:
+      - ./data/blog-frontend/logs:/app/logs
+    networks:
+      - backend-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
