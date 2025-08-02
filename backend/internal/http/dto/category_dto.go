@@ -1,7 +1,6 @@
 package dto
 
 import (
-	"time"
 	"github.com/google/uuid"
 	"go-next/internal/models"
 )
@@ -12,12 +11,10 @@ type CategoryDTO struct {
 	Slug        string             `json:"slug"`
 	Description string             `json:"description,omitempty"`
 	IsActive    bool               `json:"isActive"`
-	ParentID    *uuid.UUID        `json:"parentId,omitempty"`
+	ParentID    *uuid.UUID         `json:"parentId,omitempty"`
 	Parent      *CategorySimpleDTO `json:"parent,omitempty"`
 	ChildCount  int                `json:"childCount"`
 	PostCount   int                `json:"postCount"`
-	CreatedAt   time.Time          `json:"createdAt"`
-	UpdatedAt   time.Time          `json:"updatedAt"`
 }
 
 func ToCategoryDTO(c *models.Category) *CategoryDTO {
@@ -35,8 +32,6 @@ func ToCategoryDTO(c *models.Category) *CategoryDTO {
 		Parent:      parent,
 		ChildCount:  len(c.Children),
 		PostCount:   len(c.Posts),
-		CreatedAt:   c.CreatedAt,
-		UpdatedAt:   c.UpdatedAt,
 	}
 }
 

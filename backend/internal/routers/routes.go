@@ -12,7 +12,6 @@ import (
 
 func RegisterRoutes(r *gin.Engine) {
 	authHandler := controllers.NewAuthHandler()
-	adminAuthHandler := controllers.NewAdminAuthHandler()
 	store, _ := storage.NewStorageService(config.GetConfig().Storage)
 	mediaSvc := services.NewMediaService(store, services.GlobalRedisClient)
 	postHandler := controllers.NewPostHandler(services.PostSvc)
@@ -34,11 +33,12 @@ func RegisterRoutes(r *gin.Engine) {
 	notificationHandler := controllers.NewNotificationHandler()
 	wsHandler := controllers.NewWebSocketHandler(wsHub)
 
-	r.POST("/api/register", authHandler.Register)
-	r.POST("/api/admin/register", adminAuthHandler.Register)
-	r.POST("/api/login", authHandler.Login)
-
 	api := r.Group("/api/v1")
+	api.POST("/register", authHandler.Register)
+	api.POST("/login", authHandler.Login)
+	api.POST("/request-password-reset", authHandler.RequestPasswordReset)
+	api.POST("/reset-password", authHandler.ResetPassword)
+	api.POST("/auth/refresh", authHandler.RefreshToken)
 
 	// Posts
 	posts := api.Group("/posts")
@@ -181,9 +181,4 @@ func RegisterRoutes(r *gin.Engine) {
 		admin.POST("/notifications", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/admin/notifications", "POST"), notificationHandler.CreateNotification)
 	}
 
-	// Password reset (not grouped under users for simplicity)
-	api.POST("/request-password-reset", authHandler.RequestPasswordReset)
-	api.POST("/reset-password", authHandler.ResetPassword)
-	// Refresh token endpoint
-	api.POST("/auth/refresh", authHandler.RefreshToken)
 }
