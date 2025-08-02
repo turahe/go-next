@@ -3,7 +3,7 @@ package requests
 import (
 	"fmt"
 	"strings"
-	"wordpress-go-next/backend/internal/models"
+	"go-next/internal/models"
 )
 
 // CreateTagRequest represents the request for creating a new tag

@@ -3,6 +3,7 @@ package services
 import (
 	"go-next/internal/models"
 	"go-next/pkg/database"
+	"go-next/pkg/redis"
 )
 
 type UserRoleService interface {
@@ -11,7 +12,15 @@ type UserRoleService interface {
 	ListUserRoles(user *models.User) ([]models.Role, error)
 }
 
-type userRoleService struct{}
+type userRoleService struct {
+	redisService *redis.RedisService
+}
+
+func NewUserRoleService(redisService *redis.RedisService) UserRoleService {
+	return &userRoleService{
+		redisService: redisService,
+	}
+}
 
 func (s *userRoleService) AssignRoleToUser(user *models.User, role *models.Role) error {
 	return database.DB.Model(user).Association("Roles").Append(role)

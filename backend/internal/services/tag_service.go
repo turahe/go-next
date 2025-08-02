@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-	"wordpress-go-next/backend/internal/http/responses"
-	"wordpress-go-next/backend/internal/models"
-	"wordpress-go-next/backend/pkg/database"
-	"wordpress-go-next/backend/pkg/redis"
+	"go-next/internal/http/responses"
+	"go-next/internal/models"
+	"go-next/pkg/database"
+	"go-next/pkg/redis"
 )
 
 // TagService interface for tag management

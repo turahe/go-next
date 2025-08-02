@@ -35,7 +35,7 @@ services:
   backend:
     build:
       context: backend
-      dockerfile: backend/Dockerfile
+      dockerfile: Dockerfile
     container_name: go-next-backend
     env_file:
       - backend/.env
@@ -91,7 +91,7 @@ services:
   admin-frontend:
     build:
       context: admin-frontend
-      dockerfile: admin-frontend/Dockerfile
+      dockerfile: Dockerfile
     container_name: go-next-admin-frontend
     env_file:
       - admin-frontend/.env

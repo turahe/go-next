@@ -1,8 +1,10 @@
 package services
 
 import (
+	"context"
 	"go-next/internal/models"
 	"go-next/pkg/database"
+	"go-next/pkg/redis"
 
 	"gorm.io/gorm"
 )
@@ -13,9 +15,20 @@ type PostService interface {
 	CreatePost(post *models.Post) error
 	UpdatePost(post *models.Post) error
 	DeletePost(id string) error
+	GetPublishedPosts(ctx context.Context) ([]*models.Post, error)
+	GetPostCount(ctx context.Context) (int64, error)
+	GetPublishedPostCount(ctx context.Context) (int64, error)
 }
 
-type postService struct{}
+type postService struct {
+	redisService *redis.RedisService
+}
+
+func NewPostService(redisService *redis.RedisService) PostService {
+	return &postService{
+		redisService: redisService,
+	}
+}
 
 func (s *postService) GetAllPosts() ([]models.Post, error) {
 	var posts []models.Post
@@ -51,6 +64,24 @@ func (s *postService) UpdatePost(post *models.Post) error {
 
 func (s *postService) DeletePost(id string) error {
 	return database.DB.Delete(&models.Post{}, id).Error
+}
+
+func (s *postService) GetPublishedPosts(ctx context.Context) ([]*models.Post, error) {
+	var posts []*models.Post
+	err := database.DB.Where("status = ?", "published").Find(&posts).Error
+	return posts, err
+}
+
+func (s *postService) GetPostCount(ctx context.Context) (int64, error) {
+	var count int64
+	err := database.DB.Model(&models.Post{}).Count(&count).Error
+	return count, err
+}
+
+func (s *postService) GetPublishedPostCount(ctx context.Context) (int64, error) {
+	var count int64
+	err := database.DB.Model(&models.Post{}).Where("status = ?", "published").Count(&count).Error
+	return count, err
 }
 
 var PostSvc PostService = &postService{}

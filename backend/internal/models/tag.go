@@ -2,7 +2,6 @@ package models
 
 import (
 	"time"
-	"wordpress-go-next/backend/pkg/database"
 )
 
 // Tag represents a tag that can be associated with various entities
@@ -88,20 +87,6 @@ func (t *Tag) SetDefaultColor() {
 	if t.Color == "" {
 		t.Color = t.GetDefaultColor()
 	}
-}
-
-// GetTaggedEntitiesCount returns the count of entities tagged with this tag
-func (t *Tag) GetTaggedEntitiesCount() int64 {
-	var count int64
-	database.DB.Model(&TaggedEntity{}).Where("tag_id = ?", t.ID).Count(&count)
-	return count
-}
-
-// GetTaggedEntitiesByType returns the count of entities of a specific type tagged with this tag
-func (t *Tag) GetTaggedEntitiesByType(entityType string) int64 {
-	var count int64
-	database.DB.Model(&TaggedEntity{}).Where("tag_id = ? AND entity_type = ?", t.ID, entityType).Count(&count)
-	return count
 }
 
 // TagType constants

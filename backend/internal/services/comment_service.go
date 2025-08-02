@@ -3,6 +3,7 @@ package services
 import (
 	"go-next/internal/models"
 	"go-next/pkg/database"
+	"go-next/pkg/redis"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -23,7 +24,15 @@ type CommentService interface {
 	GetChildrenComments(id uuid.UUID) ([]models.Comment, error)
 }
 
-type commentService struct{}
+type commentService struct {
+	redisService *redis.RedisService
+}
+
+func NewCommentService(redisService *redis.RedisService) CommentService {
+	return &commentService{
+		redisService: redisService,
+	}
+}
 
 func (s *commentService) GetCommentsByPost(postID string) ([]models.Comment, error) {
 	postUUID, err := uuid.Parse(postID)

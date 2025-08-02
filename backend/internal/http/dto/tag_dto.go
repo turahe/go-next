@@ -1,8 +1,8 @@
 package dto
 
 import (
+	"go-next/internal/models"
 	"time"
-	"wordpress-go-next/backend/internal/models"
 )
 
 type TagDTO struct {
@@ -29,7 +29,7 @@ func ToTagDTO(t *models.Tag) *TagDTO {
 		IsActive:            t.IsActive,
 		CreatedAt:           t.CreatedAt,
 		UpdatedAt:           t.UpdatedAt,
-		TaggedEntitiesCount: t.GetTaggedEntitiesCount(),
+		TaggedEntitiesCount: int64(len(t.TaggedEntities)),
 	}
 }
 

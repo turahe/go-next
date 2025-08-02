@@ -38,10 +38,10 @@ func Setup() error {
 
 	DB = db
 
-	// Auto-migrate all models
-	if err := AutoMigrate(); err != nil {
-		return err
-	}
+	// Auto-migrate all models (disabled for now due to schema conflicts)
+	// if err := AutoMigrate(); err != nil {
+	// 	return err
+	// }
 
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"go-next/internal/models"
 	"go-next/pkg/database"
+	"go-next/pkg/redis"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,7 +21,15 @@ type AuthService interface {
 	ResetUserPassword(user *models.User, newPassword string) error
 }
 
-type authService struct{}
+type authService struct {
+	redisService *redis.RedisService
+}
+
+func NewAuthService(redisService *redis.RedisService) AuthService {
+	return &authService{
+		redisService: redisService,
+	}
+}
 
 func (s *authService) GenerateToken() string {
 	b := make([]byte, 32)

@@ -1,11 +1,17 @@
 package services
 
 import (
+	"context"
 	"go-next/internal/http/responses"
 	"go-next/pkg/database"
+	"go-next/pkg/redis"
+
+	"gorm.io/gorm"
 )
 
-type BaseService struct{}
+type BaseService struct {
+	Redis *redis.RedisService
+}
 
 func (s *BaseService) Create(value interface{}) error {
 	return database.DB.Create(value).Error
@@ -96,6 +102,42 @@ func (s *BaseService) Update(value interface{}) error {
 
 func (s *BaseService) Delete(value interface{}) error {
 	return database.DB.Delete(value).Error
+}
+
+func (s *BaseService) PaginateWithCacheQuery(ctx context.Context, model interface{}, params PaginationParams, out interface{}, cacheKey string, expiration int, query *gorm.DB) (*responses.PaginationResponse, error) {
+	var totalCount int64
+	if err := query.Count(&totalCount).Error; err != nil {
+		return nil, err
+	}
+
+	if params.Page < 1 {
+		params.Page = 1
+	}
+	if params.PerPage < 1 {
+		params.PerPage = 10
+	}
+
+	offset := (params.Page - 1) * params.PerPage
+
+	if err := query.Limit(params.PerPage).Offset(offset).Find(out).Error; err != nil {
+		return nil, err
+	}
+
+	totalPage := (totalCount + int64(params.PerPage) - 1) / int64(params.PerPage)
+	lastPage := totalPage
+
+	response := &responses.PaginationResponse{
+		Data:         out,
+		TotalCount:   totalCount,
+		TotalPage:    totalPage,
+		CurrentPage:  int64(params.Page),
+		LastPage:     lastPage,
+		PerPage:      int64(params.PerPage),
+		NextPage:     int64(params.Page + 1),
+		PreviousPage: int64(params.Page - 1),
+	}
+
+	return response, nil
 }
 
 func (s *BaseService) FirstOrFail(out interface{}, query interface{}, args ...interface{}) error {
