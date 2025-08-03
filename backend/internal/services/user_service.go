@@ -46,13 +46,22 @@ type UserService interface {
 // This struct holds the database connection and provides the actual implementation
 // of all user-related business logic.
 type userService struct {
-	db *gorm.DB // Database connection for all data operations
+	db            *gorm.DB // Database connection for all data operations
+	searchService *SearchService
 }
 
 // NewUserService creates and returns a new instance of UserService.
 // This factory function initializes the service with the global database connection.
 func NewUserService() UserService {
-	return &userService{db: database.DB}
+	return &userService{
+		db:            database.DB,
+		searchService: nil, // Will be set after initialization
+	}
+}
+
+// SetSearchService sets the search service for indexing operations
+func (s *userService) SetSearchService(searchService *SearchService) {
+	s.searchService = searchService
 }
 
 // GetUserByID retrieves a user by their unique identifier.
@@ -118,7 +127,7 @@ func (s *userService) GetUserByEmail(email string) (*models.User, error) {
 // Validates user data and handles password hashing.
 //
 // Parameters:
-//   - user: User model with all required fields populated
+//   - user: User model with all required fields
 //
 // Returns:
 //   - error: Any error encountered during the operation
@@ -126,16 +135,34 @@ func (s *userService) GetUserByEmail(email string) (*models.User, error) {
 // Example:
 //
 //	user := &models.User{
-//	    Name:     "John Doe",
+//	    Username: "john_doe",
 //	    Email:    "john@example.com",
 //	    Password: "securepassword",
 //	}
 //	err := userService.CreateUser(user)
 //	if err != nil {
-//	    // Handle error
+//	    // Handle error (validation, duplicate email, etc.)
 //	}
 func (s *userService) CreateUser(user *models.User) error {
-	return s.db.Create(user).Error
+	// Hash password before saving
+	if err := user.HashPassword(user.Password); err != nil {
+		return err
+	}
+
+	// Create user in database
+	if err := s.db.Create(user).Error; err != nil {
+		return err
+	}
+
+	// Index the user for search after successful creation
+	if s.searchService != nil {
+		if err := s.searchService.IndexUser(user); err != nil {
+			// Log the error but don't fail the creation
+			// TODO: Add proper logging here
+		}
+	}
+
+	return nil
 }
 
 // UpdateUser updates an existing user's information.
@@ -149,14 +176,38 @@ func (s *userService) CreateUser(user *models.User) error {
 //
 // Example:
 //
-//	user.Name = "Updated Name"
-//	user.Bio = "Updated bio"
+//	user.Username = "new_username"
 //	err := userService.UpdateUser(user)
 //	if err != nil {
-//	    // Handle error
+//	    // Handle error (user not found, validation, etc.)
 //	}
 func (s *userService) UpdateUser(user *models.User) error {
-	return s.db.Save(user).Error
+	// Get existing user to preserve sensitive fields
+	var existingUser models.User
+	if err := s.db.First(&existingUser, user.ID).Error; err != nil {
+		return err
+	}
+
+	// Only allow updating specific fields for security
+	updates := map[string]interface{}{
+		"username": user.Username,
+		"email":    user.Email,
+		"phone":    user.Phone,
+	}
+
+	if err := s.db.Model(&existingUser).Updates(updates).Error; err != nil {
+		return err
+	}
+
+	// Re-index the user for search after successful update
+	if s.searchService != nil {
+		if err := s.searchService.IndexUser(user); err != nil {
+			// Log the error but don't fail the update
+			// TODO: Add proper logging here
+		}
+	}
+
+	return nil
 }
 
 // DeleteUser permanently removes a user account.
@@ -172,10 +223,28 @@ func (s *userService) UpdateUser(user *models.User) error {
 //
 //	err := userService.DeleteUser(userUUID)
 //	if err != nil {
-//	    // Handle error
+//	    // Handle error (user not found, etc.)
 //	}
 func (s *userService) DeleteUser(id uuid.UUID) error {
-	return s.db.Delete(&models.User{}, id).Error
+	// Get the user before deletion for search indexing
+	var user models.User
+	if err := s.db.First(&user, id).Error; err != nil {
+		return err
+	}
+
+	if err := s.db.Delete(&models.User{}, id).Error; err != nil {
+		return err
+	}
+
+	// Remove the user from search index after successful deletion
+	if s.searchService != nil {
+		if err := s.searchService.DeleteFromIndex("users", id.String()); err != nil {
+			// Log the error but don't fail the deletion
+			// TODO: Add proper logging here
+		}
+	}
+
+	return nil
 }
 
 // GetUserProfile retrieves a user's public profile information.

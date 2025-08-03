@@ -28,13 +28,20 @@ type CategoryService interface {
 }
 
 type categoryService struct {
-	redisService *redis.RedisService
+	redisService  *redis.RedisService
+	searchService *SearchService
 }
 
 func NewCategoryService(redisService *redis.RedisService) CategoryService {
 	return &categoryService{
-		redisService: redisService,
+		redisService:  redisService,
+		searchService: nil, // Will be set after initialization
 	}
+}
+
+// SetSearchService sets the search service for indexing operations
+func (s *categoryService) SetSearchService(searchService *SearchService) {
+	s.searchService = searchService
 }
 
 func (s *categoryService) GetAllCategories() ([]models.Category, error) {
@@ -58,11 +65,37 @@ func (s *categoryService) GetCategoryByID(id string) (*models.Category, error) {
 }
 
 func (s *categoryService) CreateCategory(category *models.Category) error {
-	return database.DB.Create(category).Error
+	err := database.DB.Create(category).Error
+	if err != nil {
+		return err
+	}
+
+	// Index the category for search after successful creation
+	if s.searchService != nil {
+		if err := s.searchService.IndexCategory(category); err != nil {
+			// Log the error but don't fail the creation
+			// TODO: Add proper logging here
+		}
+	}
+
+	return nil
 }
 
 func (s *categoryService) UpdateCategory(category *models.Category) error {
-	return database.DB.Save(category).Error
+	err := database.DB.Save(category).Error
+	if err != nil {
+		return err
+	}
+
+	// Re-index the category for search after successful update
+	if s.searchService != nil {
+		if err := s.searchService.IndexCategory(category); err != nil {
+			// Log the error but don't fail the update
+			// TODO: Add proper logging here
+		}
+	}
+
+	return nil
 }
 
 func (s *categoryService) DeleteCategory(id string) error {
@@ -70,7 +103,27 @@ func (s *categoryService) DeleteCategory(id string) error {
 	if err != nil {
 		return err
 	}
-	return database.DB.Delete(&models.Category{}, categoryID).Error
+
+	// Get the category before deletion for search indexing
+	var category models.Category
+	if err := database.DB.First(&category, categoryID).Error; err != nil {
+		return err
+	}
+
+	err = database.DB.Delete(&models.Category{}, categoryID).Error
+	if err != nil {
+		return err
+	}
+
+	// Remove the category from search index after successful deletion
+	if s.searchService != nil {
+		if err := s.searchService.DeleteFromIndex("categories", id); err != nil {
+			// Log the error but don't fail the deletion
+			// TODO: Add proper logging here
+		}
+	}
+
+	return nil
 }
 
 func (s *categoryService) CreateNested(category *models.Category, parentID *uuid.UUID) error {

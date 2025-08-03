@@ -99,8 +99,9 @@ type MediaService interface {
 // This struct holds the database connection and storage service,
 // providing the actual implementation of all media-related business logic.
 type mediaService struct {
-	db      *gorm.DB               // Database connection for all data operations
-	storage storage.StorageService // Storage service for file operations
+	db            *gorm.DB               // Database connection for all data operations
+	storage       storage.StorageService // Storage service for file operations
+	searchService *SearchService
 }
 
 // NewMediaService creates and returns a new instance of MediaService.
@@ -120,9 +121,15 @@ func NewMediaService() MediaService {
 	}
 
 	return &mediaService{
-		db:      database.DB,
-		storage: storageService,
+		db:            database.DB,
+		storage:       storageService,
+		searchService: nil, // Will be set after initialization
 	}
+}
+
+// SetSearchService sets the search service for indexing operations
+func (s *mediaService) SetSearchService(searchService *SearchService) {
+	s.searchService = searchService
 }
 
 // UploadFile uploads a file to storage and creates a media record.
@@ -190,6 +197,14 @@ func (s *mediaService) UploadFile(file *multipart.FileHeader, userID uuid.UUID, 
 		// Clean up uploaded file if database save fails
 		s.storage.Delete(key)
 		return nil, err
+	}
+
+	// Index the media for search after successful creation
+	if s.searchService != nil {
+		if err := s.searchService.IndexMedia(media); err != nil {
+			// Log the error but don't fail the upload
+			// TODO: Add proper logging here
+		}
 	}
 
 	return media, nil
@@ -318,7 +333,20 @@ func (s *mediaService) GetMediaBySlug(slug string) (*models.Media, error) {
 //	    // Handle error
 //	}
 func (s *mediaService) UpdateMedia(media *models.Media) error {
-	return s.db.Save(media).Error
+	err := s.db.Save(media).Error
+	if err != nil {
+		return err
+	}
+
+	// Re-index the media for search after successful update
+	if s.searchService != nil {
+		if err := s.searchService.IndexMedia(media); err != nil {
+			// Log the error but don't fail the update
+			// TODO: Add proper logging here
+		}
+	}
+
+	return nil
 }
 
 // DeleteMedia removes a media record and its associated file.
@@ -337,19 +365,34 @@ func (s *mediaService) UpdateMedia(media *models.Media) error {
 //	    // Handle error (not found, storage error, etc.)
 //	}
 func (s *mediaService) DeleteMedia(id uuid.UUID) error {
-	// Get media record first
-	media, err := s.GetMediaByID(id)
-	if err != nil {
+	// Get the media before deletion for search indexing
+	var media models.Media
+	if err := s.db.First(&media, id).Error; err != nil {
 		return err
 	}
 
-	// Delete file from storage
-	if err := s.storage.Delete(media.Path); err != nil {
-		return err
+	// Delete from storage first
+	if s.storage != nil {
+		if err := s.storage.Delete(media.Path); err != nil {
+			// Log error but continue with database deletion
+			// TODO: Add proper logging here
+		}
 	}
 
 	// Delete from database
-	return s.db.Delete(media).Error
+	if err := s.db.Delete(&models.Media{}, id).Error; err != nil {
+		return err
+	}
+
+	// Remove the media from search index after successful deletion
+	if s.searchService != nil {
+		if err := s.searchService.DeleteFromIndex("media", id.String()); err != nil {
+			// Log the error but don't fail the deletion
+			// TODO: Add proper logging here
+		}
+	}
+
+	return nil
 }
 
 // GetUserMedia retrieves all media uploaded by a specific user.

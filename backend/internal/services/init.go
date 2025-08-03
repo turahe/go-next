@@ -26,6 +26,7 @@ type ServiceManager struct {
 	AuthService     AuthService
 	TagService      TagService
 	MenuService     MenuService
+	SearchService   *SearchService
 }
 
 // NewServiceManager creates a new service manager with all services initialized
@@ -51,8 +52,11 @@ func NewServiceManager(redisService *redis.RedisService, storageService storage.
 	manager.TagService = NewTagService(redisService)
 	manager.MenuService = NewMenuService(redisService)
 
+	// Initialize search service (will be set later)
+	manager.SearchService = nil
+
 	// Log service initialization
-	logger.Info("NewServiceManager: All services initialized successfully", "services_count", 9, "redis_available", redisService != nil, "storage_available", storageService != nil)
+	logger.Info("NewServiceManager: All services initialized successfully", "services_count", 10, "redis_available", redisService != nil, "storage_available", storageService != nil)
 
 	return manager
 }
@@ -88,6 +92,30 @@ func InitializeServices(redisService *redis.RedisService, storageService storage
 	}()
 
 	log.Println("All services initialized with Redis caching and logging")
+}
+
+// SetSearchService sets the search service for all services that need it
+func (sm *ServiceManager) SetSearchService(searchService *SearchService) {
+	sm.SearchService = searchService
+
+	// Set search service for all services that need indexing
+	if postSvc, ok := sm.PostService.(*postService); ok {
+		postSvc.SetSearchService(searchService)
+	}
+
+	if userSvc, ok := sm.UserService.(*userService); ok {
+		userSvc.SetSearchService(searchService)
+	}
+
+	if categorySvc, ok := sm.CategoryService.(*categoryService); ok {
+		categorySvc.SetSearchService(searchService)
+	}
+
+	if mediaSvc, ok := sm.MediaService.(*mediaService); ok {
+		mediaSvc.SetSearchService(searchService)
+	}
+
+	sm.Logger.Info("SearchService set for all services", "search_service_available", searchService != nil)
 }
 
 // WarmCache warms up the cache with frequently accessed data

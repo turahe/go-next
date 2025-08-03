@@ -29,26 +29,19 @@ Documentation for the Go backend server:
 
 - **[README.md](./backend/README.md)** - Backend overview and setup instructions
 
-### 🔌 API Documentation (`/api/`)
-API documentation and technical guides:
+### 🚀 API Documentation (`/api/`)
+Comprehensive API documentation and implementation guides:
 
-- **[docs.go](./api/docs.go)** - Auto-generated API documentation
-- **[swagger.json](./api/swagger.json)** - Swagger API specification (JSON)
-- **[swagger.yaml](./api/swagger.yaml)** - Swagger API specification (YAML)
-- **[PAGINATION_GUIDE.md](./api/PAGINATION_GUIDE.md)** - Pagination implementation guide
-- **[PAGINATION_IMPLEMENTATION_SUMMARY.md](./api/PAGINATION_IMPLEMENTATION_SUMMARY.md)** - Pagination implementation summary
-- **[VALIDATION_GUIDE.md](./api/VALIDATION_GUIDE.md)** - Input validation guide
-- **[REDIS_TOKEN_CACHING.md](./api/REDIS_TOKEN_CACHING.md)** - Redis token caching implementation
-- **[REDIS_TOKEN_CACHING_SUMMARY.md](./api/REDIS_TOKEN_CACHING_SUMMARY.md)** - Redis token caching summary
-- **[MODELS_OPTIMIZATION_SUMMARY.md](./api/MODELS_OPTIMIZATION_SUMMARY.md)** - Database models optimization summary
-- **[CASBIN_IMPLEMENTATION.md](./api/CASBIN_IMPLEMENTATION.md)** - Casbin RBAC implementation guide
-- **[CASBIN_GORM_ADAPTER.md](./api/CASBIN_GORM_ADAPTER.md)** - Casbin GORM adapter configuration
-- **[CUSTOM_CASBIN_ADAPTER_USAGE.md](./api/CUSTOM_CASBIN_ADAPTER_USAGE.md)** - Custom Casbin adapter usage
-- **[ORGANIZATION_CASBIN_RULES.md](./api/ORGANIZATION_CASBIN_RULES.md)** - Organization-based Casbin rules
-- **[ORGANIZATION_USER_MANY_TO_MANY.md](./api/ORGANIZATION_USER_MANY_TO_MANY.md)** - Organization-user relationships
-- **[ROLE_MENU_MANY_TO_MANY.md](./api/ROLE_MENU_MANY_TO_MANY.md)** - Role-menu relationships
-- **[POST_CONTENT_RELATIONSHIP.md](./api/POST_CONTENT_RELATIONSHIP.md)** - Post content relationships
-- **[RBAC_MODEL_CONFIGURATION.md](./api/RBAC_MODEL_CONFIGURATION.md)** - RBAC model configuration guide
+- **[SEARCH_IMPLEMENTATION.md](./api/SEARCH_IMPLEMENTATION.md)** - Complete Meilisearch search implementation guide
+- **[SEARCH_INTEGRATION.md](./api/SEARCH_INTEGRATION.md)** - Search indexing integration with CRUD operations
+- **[EMAIL_VERIFICATION.md](./api/EMAIL_VERIFICATION.md)** - Email verification implementation guide
+- **[LOGIN_SUCCESS_EMAIL.md](./api/LOGIN_SUCCESS_EMAIL.md)** - Login success email notification implementation
+- **[LOGOUT_IMPLEMENTATION.md](./api/LOGOUT_IMPLEMENTATION.md)** - Logout functionality with Redis token blacklisting
+- **[API_DOCUMENTATION.md](./api/API_DOCUMENTATION.md)** - Complete API reference and examples
+- **[AUTHENTICATION.md](./api/AUTHENTICATION.md)** - JWT authentication implementation
+- **[AUTHORIZATION.md](./api/AUTHORIZATION.md)** - Casbin RBAC authorization system
+- **[WEBSOCKET_API.md](./api/WEBSOCKET_API.md)** - Real-time WebSocket API documentation
+- **[RABBITMQ_INTEGRATION.md](./api/RABBITMQ_INTEGRATION.md)** - Message queue integration guide
 
 ## 🚀 Quick Start
 

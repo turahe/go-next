@@ -19,10 +19,13 @@ type AuthHandler interface {
 	Login(c *gin.Context)
 	RequestEmailVerification(c *gin.Context)
 	VerifyEmail(c *gin.Context)
+	ResendVerificationEmail(c *gin.Context)
 	RequestPhoneVerification(c *gin.Context)
 	VerifyPhone(c *gin.Context)
 	ResetPassword(c *gin.Context)
 	RefreshToken(c *gin.Context)
+	Logout(c *gin.Context)
+	RequestPasswordReset(c *gin.Context)
 }
 
 type authHandler struct {
@@ -98,8 +101,8 @@ func (h *authHandler) Register(c *gin.Context) {
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param credentials body requests.LoginRequest true "Login credentials"
-// @Success 200 {object} AuthResponse
+// @Param request body requests.LoginRequest true "Login credentials"
+// @Success 200 {object} responses.CommonResponse{data=dto.AuthDTO}
 // @Failure 400 {object} responses.ErrorResponse
 // @Failure 401 {object} responses.ErrorResponse
 // @Failure 500 {object} responses.ErrorResponse
@@ -123,8 +126,20 @@ func (h *authHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Get client IP address
+	clientIP := c.ClientIP()
+	if clientIP == "" {
+		clientIP = "Unknown"
+	}
+
+	// Get user agent
+	userAgent := c.GetHeader("User-Agent")
+	if userAgent == "" {
+		userAgent = "Unknown"
+	}
+
 	// Try login with username as email
-	auth, err := h.AuthService.Login(req.Identity, req.Password)
+	auth, err := h.AuthService.Login(req.Identity, req.Password, clientIP, userAgent)
 	if err != nil {
 		// If username login fails, try with email
 		// For now, we'll just return the error
@@ -223,13 +238,12 @@ type EmailVerificationRequest struct {
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param id path string true "User ID"
 // @Param verification body EmailVerificationRequest true "Verification data"
 // @Success 200 {object} responses.SuccessResponse
 // @Failure 400 {object} responses.ErrorResponse
 // @Failure 404 {object} responses.ErrorResponse
 // @Failure 500 {object} responses.ErrorResponse
-// @Router /users/{id}/verify-email [post]
+// @Router /auth/verify-email [post]
 func (h *authHandler) VerifyEmail(c *gin.Context) {
 	var req EmailVerificationRequest
 
@@ -249,7 +263,13 @@ func (h *authHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Email verified"})
+	// Verify email using auth service
+	if err := h.AuthService.VerifyEmail(req.Token); err != nil {
+		responses.SendError(c, http.StatusBadRequest, "Email verification failed", err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Email verified successfully"})
 }
 
 // RequestPhoneVerification sends an SMS verification token to the user
@@ -315,27 +335,25 @@ func (h *authHandler) VerifyPhone(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Phone verified"})
 }
 
-// PasswordResetRequest represents a password reset request
-type PasswordResetRequest struct {
-	UserID      string `json:"user_id" validate:"required"`
-	Token       string `json:"token" validate:"required"`
-	NewPassword string `json:"new_password" validate:"required,min=8,max=255"`
+// RequestPasswordResetRequest represents a password reset request
+type RequestPasswordResetRequest struct {
+	Email string `json:"email" validate:"required,email"`
 }
 
-// ResetPassword resets the user's password using a reset token
-// @Summary Reset password
-// @Description Reset user's password using the provided reset token
+// RequestPasswordReset sends a password reset email to the user
+// @Summary Request password reset
+// @Description Send password reset email to user's email address
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param reset body PasswordResetRequest true "Password reset data"
+// @Param request body RequestPasswordResetRequest true "Password reset request"
 // @Success 200 {object} responses.SuccessResponse
 // @Failure 400 {object} responses.ErrorResponse
 // @Failure 404 {object} responses.ErrorResponse
 // @Failure 500 {object} responses.ErrorResponse
-// @Router /auth/reset-password [post]
-func (h *authHandler) ResetPassword(c *gin.Context) {
-	var req PasswordResetRequest
+// @Router /auth/request-password-reset [post]
+func (h *authHandler) RequestPasswordReset(c *gin.Context) {
+	var req RequestPasswordResetRequest
 
 	// Bind JSON to request struct
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -353,7 +371,63 @@ func (h *authHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Password reset"})
+	// Request password reset using auth service
+	if err := h.AuthService.RequestPasswordReset(req.Email); err != nil {
+		responses.SendError(c, http.StatusBadRequest, "Password reset request failed", err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Password reset email sent successfully",
+	})
+}
+
+// ResetPasswordRequest represents a password reset request
+type ResetPasswordRequest struct {
+	Token       string `json:"token" validate:"required"`
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}
+
+// ResetPassword resets the user's password using a valid reset token
+// @Summary Reset password
+// @Description Reset user password using reset token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body ResetPasswordRequest true "Password reset data"
+// @Success 200 {object} responses.SuccessResponse
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 401 {object} responses.ErrorResponse
+// @Failure 500 {object} responses.ErrorResponse
+// @Router /auth/reset-password [post]
+func (h *authHandler) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+
+	// Bind JSON to request struct
+	if err := c.ShouldBindJSON(&req); err != nil {
+		responses.SendError(c, http.StatusBadRequest, "Invalid JSON format", err.Error())
+		return
+	}
+
+	// Validate the request using Laravel-style validation
+	result := h.validator.Validate(&req)
+	if !result.IsValid {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"message": "Validation failed",
+			"errors":  result.Errors,
+		})
+		return
+	}
+
+	// Reset password using auth service
+	if err := h.AuthService.ResetPassword(req.Token, req.NewPassword); err != nil {
+		responses.SendError(c, http.StatusBadRequest, "Password reset failed", err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Password reset successful",
+	})
 }
 
 // Custom validation functions
@@ -400,4 +474,96 @@ func validateUniqueUsername(fl validator.FieldLevel) bool {
 	// This would typically check against the database
 	// For now, we'll just check if it's not "admin"
 	return username != "admin"
+}
+
+// ResendVerificationEmailRequest represents a resend verification email request
+type ResendVerificationEmailRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+// ResendVerificationEmail sends a new verification email to the user
+// @Summary Resend verification email
+// @Description Send a new verification email to the user's email address
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body ResendVerificationEmailRequest true "Resend verification request"
+// @Success 200 {object} responses.SuccessResponse
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 404 {object} responses.ErrorResponse
+// @Failure 500 {object} responses.ErrorResponse
+// @Router /auth/resend-verification-email [post]
+func (h *authHandler) ResendVerificationEmail(c *gin.Context) {
+	var req ResendVerificationEmailRequest
+
+	// Bind JSON to request struct
+	if err := c.ShouldBindJSON(&req); err != nil {
+		responses.SendError(c, http.StatusBadRequest, "Invalid JSON format", err.Error())
+		return
+	}
+
+	// Validate the request using Laravel-style validation
+	result := h.validator.Validate(&req)
+	if !result.IsValid {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"message": "Validation failed",
+			"errors":  result.Errors,
+		})
+		return
+	}
+
+	// Resend verification email using auth service
+	if err := h.AuthService.ResendVerificationEmail(req.Email); err != nil {
+		responses.SendError(c, http.StatusBadRequest, "Failed to resend verification email", err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Verification email sent successfully"})
+}
+
+// LogoutRequest represents a logout request
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+// Logout invalidates the current refresh token
+// @Summary User logout
+// @Description Invalidate refresh token and log out user
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body LogoutRequest true "Logout request"
+// @Success 200 {object} responses.SuccessResponse
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 401 {object} responses.ErrorResponse
+// @Failure 500 {object} responses.ErrorResponse
+// @Router /auth/logout [post]
+func (h *authHandler) Logout(c *gin.Context) {
+	var req LogoutRequest
+
+	// Bind JSON to request struct
+	if err := c.ShouldBindJSON(&req); err != nil {
+		responses.SendError(c, http.StatusBadRequest, "Invalid JSON format", err.Error())
+		return
+	}
+
+	// Validate the request using Laravel-style validation
+	result := h.validator.Validate(&req)
+	if !result.IsValid {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"message": "Validation failed",
+			"errors":  result.Errors,
+		})
+		return
+	}
+
+	// Logout user using auth service
+	if err := h.AuthService.Logout(req.RefreshToken); err != nil {
+		responses.SendError(c, http.StatusBadRequest, "Logout failed", err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Logout successful",
+	})
 }

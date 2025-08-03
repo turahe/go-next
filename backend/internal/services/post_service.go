@@ -29,13 +29,20 @@ type PostService interface {
 }
 
 type postService struct {
-	redisService *redis.RedisService
+	redisService  *redis.RedisService
+	searchService *SearchService
 }
 
 func NewPostService(redisService *redis.RedisService) PostService {
 	return &postService{
-		redisService: redisService,
+		redisService:  redisService,
+		searchService: nil, // Will be set after initialization
 	}
+}
+
+// SetSearchService sets the search service for indexing operations
+func (s *postService) SetSearchService(searchService *SearchService) {
+	s.searchService = searchService
 }
 
 func (s *postService) GetAllPosts() ([]models.Post, error) {
@@ -62,16 +69,58 @@ func (s *postService) CreatePost(post *models.Post) error {
 				return err
 			}
 		}
+
+		// Index the post for search after successful creation
+		if s.searchService != nil {
+			if err := s.searchService.IndexPost(post); err != nil {
+				// Log the error but don't fail the transaction
+				// This ensures the post is created even if indexing fails
+				// TODO: Add proper logging here
+			}
+		}
+
 		return nil
 	})
 }
 
 func (s *postService) UpdatePost(post *models.Post) error {
-	return database.DB.Save(post).Error
+	err := database.DB.Save(post).Error
+	if err != nil {
+		return err
+	}
+
+	// Re-index the post for search after successful update
+	if s.searchService != nil {
+		if err := s.searchService.IndexPost(post); err != nil {
+			// Log the error but don't fail the update
+			// TODO: Add proper logging here
+		}
+	}
+
+	return nil
 }
 
 func (s *postService) DeletePost(id string) error {
-	return database.DB.Delete(&models.Post{}, id).Error
+	// Get the post before deletion for search indexing
+	var post models.Post
+	if err := database.DB.Preload("User").Preload("Category").First(&post, id).Error; err != nil {
+		return err
+	}
+
+	err := database.DB.Delete(&models.Post{}, id).Error
+	if err != nil {
+		return err
+	}
+
+	// Remove the post from search index after successful deletion
+	if s.searchService != nil {
+		if err := s.searchService.DeleteFromIndex("posts", id); err != nil {
+			// Log the error but don't fail the deletion
+			// TODO: Add proper logging here
+		}
+	}
+
+	return nil
 }
 
 func (s *postService) GetPublishedPosts(ctx context.Context) ([]*models.Post, error) {

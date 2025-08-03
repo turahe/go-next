@@ -17,6 +17,9 @@ import (
 	"syscall"
 	"time"
 
+	"go-next/pkg/redis"
+	"go-next/pkg/storage"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -31,8 +34,19 @@ func RunServer(host, port string) {
 		logger.Fatalf("Failed to setup database: %v", err)
 	}
 
-	// Initialize services
-	services.InitializeServices(nil, nil, logger.LogLevelInfo)
+	// Initialize Redis service
+	cfg := config.GetConfig()
+	redisService := redis.NewRedisService(cfg.Redis)
+
+	// Initialize storage service
+	storageService, err := storage.NewStorageService(cfg.Storage)
+	if err != nil {
+		logger.Errorf("Failed to initialize storage service: %v", err)
+		storageService = nil
+	}
+
+	// Initialize services with Redis and storage
+	services.InitializeServices(redisService, storageService, logger.LogLevelInfo)
 
 	// Initialize Casbin
 	if err := services.InitCasbin(); err != nil {

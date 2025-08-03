@@ -4,8 +4,11 @@ import (
 	"go-next/internal/http/controllers"
 	v1 "go-next/internal/routers/v1"
 	"go-next/internal/services"
+	"go-next/pkg/config"
+	"go-next/pkg/database"
 
 	"github.com/gin-gonic/gin"
+	"github.com/meilisearch/meilisearch-go"
 )
 
 func RegisterRoutes(r *gin.Engine) {
@@ -30,6 +33,17 @@ func RegisterRoutes(r *gin.Engine) {
 	blogSvc := services.NewBlogService()
 	blogHandler := controllers.NewBlogHandler(blogSvc)
 
+	// Initialize search service and handler
+	searchConfig := config.GetSearchConfig()
+	meiliClient := meilisearch.New(searchConfig.Host)
+	searchService := services.NewSearchService(meiliClient, database.GetDB())
+	searchHandler := controllers.NewSearchHandler(searchService)
+
+	// Set search service for all services that need indexing
+	if services.ServiceMgr != nil {
+		services.ServiceMgr.SetSearchService(searchService)
+	}
+
 	// Initialize WebSocket hub and handlers
 	wsHub := services.NewHub()
 	go wsHub.Run()
@@ -46,6 +60,7 @@ func RegisterRoutes(r *gin.Engine) {
 	v1.RegisterNotificationRoutes(api, notificationHandler)
 	v1.RegisterAdminNotificationRoutes(api, notificationHandler)
 	v1.RegisterWebSocketRoutes(api, wsHandler)
+	v1.RegisterSearchRoutes(api, searchHandler)
 
 	// Register existing route modules
 	v1.RegisterPostRoutes(api, postHandler, commentHandler)

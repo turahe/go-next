@@ -11,12 +11,12 @@ func RegisterAuthRoutes(api *gin.RouterGroup, authHandler controllers.AuthHandle
 	{
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
+		auth.POST("/verify-email", authHandler.VerifyEmail)
+		auth.POST("/resend-verification-email", authHandler.ResendVerificationEmail)
 		auth.POST("/reset-password", authHandler.ResetPassword)
+		auth.POST("/request-password-reset", authHandler.RequestPasswordReset)
 		auth.POST("/refresh", authHandler.RefreshToken)
-		// auth.POST("/logout", authHandler.Logout)
-		// auth.POST("/request-password-reset", authHandler.RequestPasswordReset)
+		auth.POST("/logout", authHandler.Logout)
 		// auth.POST("/change-password", authHandler.ChangePassword)
-		// auth.POST("/verify-email", authHandler.VerifyEmail)
-		// auth.POST("/resend-verification-email", authHandler.ResendVerificationEmail)
 	}
 }
