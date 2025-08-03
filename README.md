@@ -1,6 +1,6 @@
 # Go-Next Admin Panel
 
-A modern, full-stack admin panel built with React (Frontend) and Go (Backend), featuring role-based access control, user management, and content management capabilities.
+A modern, full-stack admin panel built with React (Frontend) and Go (Backend), featuring role-based access control, user management, content management, and real-time capabilities.
 
 ## 🚀 Features
 
@@ -11,9 +11,11 @@ A modern, full-stack admin panel built with React (Frontend) and Go (Backend), f
 - **Authentication System** - Secure login/register with JWT tokens
 - **User Management** - Full CRUD operations for user accounts
 - **Posts Management** - Content management with status tracking
-- **Real-time Notifications** - Toast notifications for user feedback
+- **Real-time Notifications** - WebSocket-powered live notifications
 - **Data Tables** - Sortable, searchable, and paginated data tables
 - **Responsive Design** - Works seamlessly on desktop and mobile
+- **Advanced Search** - Meilisearch-powered search with typo tolerance
+- **Export Functionality** - CSV/Excel export for data tables
 
 ### Backend (Go + Gin)
 - **RESTful API** - Clean, well-documented API endpoints
@@ -24,6 +26,11 @@ A modern, full-stack admin panel built with React (Frontend) and Go (Backend), f
 - **Content Management** - Posts, categories, and comments
 - **Media Management** - File upload and association system
 - **Dashboard Statistics** - Real-time analytics and metrics
+- **WebSocket Integration** - Real-time notifications and live updates
+- **Message Queue System** - RabbitMQ for asynchronous processing
+- **Search Engine** - Meilisearch integration for fast search
+- **Email Service** - SMTP integration with queue-based delivery
+- **WhatsApp Integration** - OTP delivery via WhatsApp Business API
 
 ## 🏗️ Architecture
 
@@ -45,6 +52,12 @@ go-next/
 │   │   ├── services/      # Business logic
 │   │   └── routers/       # Route definitions
 │   └── pkg/               # Public packages
+├── data/                   # Persistent data storage
+│   ├── postgres/          # Database files
+│   ├── redis/             # Cache and session data
+│   ├── rabbitmq/          # Message queue data
+│   ├── meilisearch/       # Search engine data
+│   └── waha/              # WhatsApp session data
 └── docker-compose.yml      # Development environment
 ```
 
@@ -52,18 +65,32 @@ go-next/
 
 ### Frontend
 - **React 19** - Modern React with hooks
-- **TypeScript** - Type-safe JavaScript
-- **Tailwind CSS** - Utility-first CSS framework
-- **React Router** - Client-side routing
-- **Vite** - Fast build tool and dev server
+- **TypeScript 5.8** - Type-safe JavaScript
+- **Tailwind CSS 4.1** - Utility-first CSS framework
+- **React Router 7** - Client-side routing
+- **Vite 7** - Fast build tool and dev server
+- **Socket.io Client** - Real-time WebSocket communication
+- **ApexCharts** - Interactive charts and analytics
+- **React DnD** - Drag and drop functionality
 
 ### Backend
-- **Go 1.21+** - High-performance language
-- **Gin** - HTTP web framework
-- **GORM** - Database ORM
-- **JWT** - JSON Web Tokens for authentication
-- **Casbin** - Authorization library
+- **Go 1.23** - High-performance language
+- **Gin 1.10** - HTTP web framework
+- **GORM 1.30** - Database ORM
+- **JWT 5.2** - JSON Web Tokens for authentication
+- **Casbin 2.108** - Authorization library
+- **Gorilla WebSocket** - Real-time communication
+- **RabbitMQ** - Message queue system
+- **Meilisearch** - Fast search engine
+- **Redis** - Caching and session storage
 - **PostgreSQL/MySQL** - Database
+
+### Infrastructure
+- **Docker & Docker Compose** - Containerized development
+- **RabbitMQ** - Message queuing for async operations
+- **Meilisearch** - Typo-tolerant search engine
+- **Mailpit** - Email testing and development
+- **WAHA** - WhatsApp HTTP API integration
 
 ## 📚 Documentation
 
@@ -78,8 +105,8 @@ For comprehensive documentation, guides, and setup instructions, see the [Docume
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+ and npm
-- Go 1.21+
+- Node.js 22+ and npm 10+
+- Go 1.23+
 - Docker and Docker Compose
 - PostgreSQL or MySQL
 
@@ -89,7 +116,16 @@ git clone <repository-url>
 cd go-next
 ```
 
-### 2. Start the Backend
+### 2. Start the Development Environment
+```bash
+# Start all services (PostgreSQL, Redis, RabbitMQ, Meilisearch, etc.)
+docker-compose up -d
+
+# Wait for services to be ready (check health status)
+docker-compose ps
+```
+
+### 3. Start the Backend
 ```bash
 cd backend
 go mod download
@@ -98,7 +134,7 @@ go run main.go
 
 The backend will start on `http://localhost:8080`
 
-### 3. Start the Frontend
+### 4. Start the Frontend
 ```bash
 cd admin-frontend
 npm install
@@ -107,10 +143,13 @@ npm run dev
 
 The frontend will start on `http://localhost:5173`
 
-### 4. Using Docker (Alternative)
-```bash
-docker-compose up -d
-```
+### 5. Access Services
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:8080
+- **API Documentation**: http://localhost:8080/swagger/index.html
+- **RabbitMQ Management**: http://localhost:15672 (admin/admin123)
+- **Meilisearch Dashboard**: http://localhost:7700
+- **Email Testing (Mailpit)**: http://localhost:8025
 
 ## 📋 User Roles & Permissions
 
@@ -120,21 +159,26 @@ docker-compose up -d
 - Content management
 - System settings
 - Role management
+- Queue monitoring
+- Search analytics
 
 ### Editor
 - Content creation and editing
 - Media management
 - Limited user management
+- Search functionality
 
 ### Moderator
 - Content moderation
 - Comment management
 - User monitoring
+- Basic search
 
 ### User
 - Basic access
 - Profile management
 - Content viewing
+- Search functionality
 
 ## 🔧 Configuration
 
@@ -142,18 +186,39 @@ docker-compose up -d
 
 #### Backend (.env)
 ```env
+# Database
 DB_HOST=localhost
 DB_PORT=5432
 DB_USER=postgres
-DB_PASSWORD=password
-DB_NAME=admin_panel
+DB_PASSWORD=postgres
+DB_NAME=go_next
+
+# JWT
 JWT_SECRET=your-secret-key
+
+# Redis
 REDIS_URL=redis://localhost:6379
+REDIS_PASSWORD=redis_password
+
+# RabbitMQ
+RABBITMQ_USER=admin
+RABBITMQ_PASSWORD=admin123
+RABBITMQ_VHOST=/
+
+# Meilisearch
+MEILI_MASTER_KEY=your-super-secret-master-key
+
+# Email
+SMTP_HOST=localhost
+SMTP_PORT=1025
+SMTP_USER=
+SMTP_PASSWORD=
 ```
 
 #### Frontend (.env)
 ```env
 VITE_API_URL=http://localhost:8080/api
+VITE_WS_URL=ws://localhost:8080/ws
 ```
 
 **Quick Setup:**
@@ -188,6 +253,13 @@ cp admin-frontend/env.example admin-frontend/.env
 - `PUT /api/v1/posts/:id` - Update post
 - `DELETE /api/v1/posts/:id` - Delete post
 
+### Search
+- `GET /api/v1/search` - Search across content
+- `GET /api/v1/search/suggestions` - Get search suggestions
+
+### WebSocket
+- `WS /ws` - Real-time notifications and updates
+
 ## 🎨 UI Components
 
 ### Reusable Components
@@ -196,9 +268,12 @@ cp admin-frontend/env.example admin-frontend/.env
 - **Layout** - Main application layout
 - **Sidebar** - Navigation sidebar
 - **Header** - Top navigation bar
+- **SearchComponent** - Advanced search with filters
+- **NotificationDropdown** - Real-time notifications
+- **ChartComponents** - Interactive charts and analytics
 
 ### Styling
-- **Tailwind CSS** - Utility-first styling
+- **Tailwind CSS 4.1** - Utility-first styling
 - **Dark Mode** - Automatic theme switching
 - **Responsive** - Mobile-first design
 - **Accessibility** - WCAG compliant
@@ -206,11 +281,12 @@ cp admin-frontend/env.example admin-frontend/.env
 ## 🔒 Security Features
 
 - **JWT Authentication** - Secure token-based auth
-- **Role-Based Access Control** - Granular permissions
+- **Role-Based Access Control** - Granular permissions with Casbin
 - **CORS Protection** - Cross-origin request handling
 - **Input Validation** - Request validation and sanitization
 - **Rate Limiting** - API rate limiting
 - **Password Hashing** - Secure password storage
+- **WebSocket Security** - Authenticated WebSocket connections
 
 ## 📊 Dashboard Features
 
@@ -219,6 +295,8 @@ cp admin-frontend/env.example admin-frontend/.env
 - **Content Metrics** - Posts and comments tracking
 - **Revenue Tracking** - Financial metrics (mock data)
 - **Quick Actions** - Common admin tasks
+- **Search Analytics** - Search performance metrics
+- **Queue Monitoring** - RabbitMQ queue status
 
 ## 🚀 Deployment
 
@@ -263,32 +341,34 @@ For support and questions:
 ## 🔮 Roadmap
 
 ### ✅ Completed Features
-- [x] Real-time notifications (Frontend context implemented)
+- [x] Real-time notifications (WebSocket implementation)
 - [x] File upload system (Backend media service implemented)
-- [x] Email notifications (SMTP service implemented)
-- [x] Basic audit logging (Logging infrastructure in place)
+- [x] Email notifications (SMTP service with queue)
+- [x] Basic audit logging (Logging infrastructure with Sentry)
 - [x] API rate limiting (Backend middleware implemented)
+- [x] WebSocket integration (Real-time communication)
+- [x] RabbitMQ queue system (Message queuing)
+- [x] Meilisearch search engine (Fast, typo-tolerant search)
+- [x] WhatsApp integration (OTP delivery)
+- [x] Advanced search functionality (Frontend and backend)
+- [x] Export functionality (CSV/Excel export)
 
 ### 🚧 In Progress
-- [ ] Advanced analytics dashboard (Basic stats implemented, needs enhancement)
-- [ ] Multi-language support (i18n infrastructure needed)
-- [ ] Advanced search and filtering (Basic search exists, needs improvement)
+- [ ] Advanced analytics dashboard (Enhanced charts and metrics)
+- [ ] Multi-language support (i18n infrastructure)
+- [ ] Micro-frontend architecture (Container application)
 
-### 🔄 Next Phase (Q1 2024)
-- [ ] **WebSocket Integration** - Real-time notifications with WebSocket
-- [ ] **Advanced Analytics** - Enhanced dashboard with charts and metrics
+### 🔄 Next Phase (Q1 2025)
 - [ ] **AI-Powered Content Management** - AI-assisted content creation and optimization
 - [ ] **Forgot Password Feature** - Complete email-based password reset flow
 - [ ] **Internationalization** - Multi-language support with i18n
-- [ ] **Advanced Search** - Full-text search with filters and sorting
-- [ ] **Export Functionality** - CSV/Excel export for data tables
 - [ ] **Audit Trail UI** - User activity tracking interface
 - [ ] **API Documentation UI** - Interactive API explorer
 - [ ] **Bulk Operations** - Mass actions for users and content
 - [ ] **Advanced Media Management** - Image editing and optimization
 - [ ] **Notification Preferences** - User-configurable notification settings
 
-### 🔮 Future Features (Q2 2024)
+### 🔮 Future Features (Q2 2025)
 - [ ] **Mobile App** - React Native mobile application
 - [ ] **Advanced RBAC** - Dynamic role creation and permission management
 - [ ] **Workflow Engine** - Content approval workflows

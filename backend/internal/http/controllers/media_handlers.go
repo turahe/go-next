@@ -12,6 +12,13 @@ import (
 type MediaHandler interface {
 	UploadMedia(c *gin.Context)
 	AssociateMedia(c *gin.Context)
+	GetSiblingMedia(c *gin.Context)
+	GetParentMedia(c *gin.Context)
+	GetDescendantMedia(c *gin.Context)
+	GetChildrenMedia(c *gin.Context)
+	CreateMediaNested(c *gin.Context)
+	MoveMediaNested(c *gin.Context)
+	DeleteMediaNested(c *gin.Context)
 }
 
 type mediaHandler struct {
@@ -84,4 +91,103 @@ func (h *mediaHandler) AssociateMedia(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Media associated"})
+}
+
+// GetSiblingMedia godoc
+// @Summary      Get sibling media
+// @Description  Get sibling media files
+// @Tags         media
+// @Accept       json
+// @Produce      json
+// @Param        id   path      int  true  "Media ID"
+// @Success      200  {object}  []models.Media
+// @Failure      400  {object}  map[string]string
+// @Router       /media/{id}/siblings [get]
+func (h *mediaHandler) GetSiblingMedia(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented"})
+}
+
+// GetParentMedia godoc
+// @Summary      Get parent media
+// @Description  Get parent media file
+// @Tags         media
+// @Accept       json
+// @Produce      json
+// @Param        id   path      int  true  "Media ID"
+// @Success      200  {object}  models.Media
+// @Failure      400  {object}  map[string]string
+// @Router       /media/{id}/parent [get]
+func (h *mediaHandler) GetParentMedia(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented"})
+}
+
+// GetDescendantMedia godoc
+// @Summary      Get descendant media
+// @Description  Get descendant media files
+// @Tags         media
+// @Accept       json
+// @Produce      json
+// @Param        id   path      int  true  "Media ID"
+// @Success      200  {object}  []models.Media
+// @Failure      400  {object}  map[string]string
+// @Router       /media/{id}/descendants [get]
+func (h *mediaHandler) GetDescendantMedia(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented"})
+}
+
+// GetChildrenMedia godoc
+// @Summary      Get children media
+// @Description  Get children media files
+// @Tags         media
+// @Accept       json
+// @Produce      json
+// @Param        id   path      int  true  "Media ID"
+// @Success      200  {object}  []models.Media
+// @Failure      400  {object}  map[string]string
+// @Router       /media/{id}/children [get]
+func (h *mediaHandler) GetChildrenMedia(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented"})
+}
+
+// CreateMediaNested godoc
+// @Summary      Create nested media
+// @Description  Create nested media structure
+// @Tags         media
+// @Accept       json
+// @Produce      json
+// @Param        media body      object true  "Media data"
+// @Success      201   {object}  models.Media
+// @Failure      400   {object}  map[string]string
+// @Router       /media/nested [post]
+func (h *mediaHandler) CreateMediaNested(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented"})
+}
+
+// MoveMediaNested godoc
+// @Summary      Move nested media
+// @Description  Move nested media structure
+// @Tags         media
+// @Accept       json
+// @Produce      json
+// @Param        id    path      int    true  "Media ID"
+// @Param        move  body      object true  "Move data"
+// @Success      200   {object}  map[string]string
+// @Failure      400   {object}  map[string]string
+// @Router       /media/{id}/move [post]
+func (h *mediaHandler) MoveMediaNested(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented"})
+}
+
+// DeleteMediaNested godoc
+// @Summary      Delete nested media
+// @Description  Delete nested media structure
+// @Tags         media
+// @Accept       json
+// @Produce      json
+// @Param        id   path      int  true  "Media ID"
+// @Success      200  {object}  map[string]string
+// @Failure      400  {object}  map[string]string
+// @Router       /media/{id}/nested [delete]
+func (h *mediaHandler) DeleteMediaNested(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented"})
 }

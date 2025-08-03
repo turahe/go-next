@@ -127,9 +127,9 @@ func (h *postHandler) CreatePost(c *gin.Context) {
 		return
 	}
 	post := models.Post{
-		Title:      input.Title,
-		Content:    input.Content,
-		CategoryID: &input.CategoryID,
+		Title:       input.Title,
+		Description: input.Content, // Use Description instead of Content
+		CategoryID:  &input.CategoryID,
 		BaseModelWithUser: models.BaseModelWithUser{
 			CreatedBy: &uid,
 			UpdatedBy: &uid,
@@ -167,7 +167,7 @@ func (h *postHandler) UpdatePost(c *gin.Context) {
 		return
 	}
 	post.Title = input.Title
-	post.Content = input.Content
+	post.Description = input.Content // Use Description instead of Content
 	post.CategoryID = &input.CategoryID
 	if err := h.PostService.UpdatePost(post); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update post"})

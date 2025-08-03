@@ -1,14 +1,12 @@
 package middleware
 
 import (
+	"go-next/internal/services"
 	"net/http"
 	"strings"
-	"go-next/pkg/database"
-
-	"go-next/internal/models"
-	"go-next/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func CasbinMiddleware(obj string, act string) gin.HandlerFunc {
@@ -18,30 +16,85 @@ func CasbinMiddleware(obj string, act string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
-		var user models.User
-		if err := database.DB.First(&user, userID).Error; err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+
+		// Convert userID to UUID
+		userUUID, ok := userID.(uuid.UUID)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID"})
 			return
 		}
-		// Get the user's role name for Casbin enforcement
-		var role string
-		if len(user.Roles) > 0 {
-			role = user.Roles[0].Name
-		} else {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "User has no role assigned"})
-			return
-		}
+
 		// Normalize path for policy matching
 		path := obj
 		if strings.Contains(obj, ":") {
-			// Remove :id or :param for policy
-			path = obj[:strings.Index(obj, ":")-1]
+			// Remove :id or :param for policy matching
+			path = obj[:strings.Index(obj, ":")]
 		}
-		allowed, err := services.Enforcer.Enforce(role, path, act)
-		if err != nil || !allowed {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+
+		// Use Casbin service to check permissions
+		casbinService := services.NewCasbinService()
+		allowed, err := casbinService.Enforce(userUUID, path, act)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Authorization check failed"})
 			return
 		}
+
+		if !allowed {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// CasbinMiddlewareWithDomain checks permissions with domain context
+func CasbinMiddlewareWithDomain(obj string, act string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		// Convert userID to UUID
+		userUUID, ok := userID.(uuid.UUID)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID"})
+			return
+		}
+
+		// Get domain from header or query parameter
+		domain := c.GetHeader("X-Domain")
+		if domain == "" {
+			domain = c.Query("domain")
+		}
+		if domain == "" {
+			// Fallback to global permissions
+			CasbinMiddleware(obj, act)(c)
+			return
+		}
+
+		// Normalize path for policy matching
+		path := obj
+		if strings.Contains(obj, ":") {
+			// Remove :id or :param for policy matching
+			path = obj[:strings.Index(obj, ":")]
+		}
+
+		// Use Casbin service to check permissions with domain context
+		casbinService := services.NewCasbinService()
+		allowed, err := casbinService.EnforceWithDomain(userUUID, path, act, domain)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Authorization check failed"})
+			return
+		}
+
+		if !allowed {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
 		c.Next()
 	}
 }

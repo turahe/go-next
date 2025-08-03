@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -20,6 +21,11 @@ type DatabaseConfig struct {
 	Dbname   string
 	Logmode  bool
 	Sslmode  bool
+	// Connection pooling configuration
+	MaxIdleConns    int
+	MaxOpenConns    int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
 }
 
 type RedisConfig struct {
@@ -80,14 +86,18 @@ func LoadConfig() {
 
 	config = &Configuration{
 		Database: DatabaseConfig{
-			Driver:   getEnvWithDefault("DB_TYPE", "sqlite"),
-			Host:     getEnvWithDefault("DB_HOST", "localhost"),
-			Port:     getEnvWithDefault("DB_PORT", "5432"),
-			Username: getEnvWithDefault("DB_USER", "wordpress_user"),
-			Password: getEnvWithDefault("DB_PASSWORD", "wordpress_password"),
-			Dbname:   getEnvWithDefault("DB_NAME", "go_next"),
-			Logmode:  os.Getenv("DB_LOGMODE") == "true",
-			Sslmode:  os.Getenv("DB_SSLMODE") == "require",
+			Driver:          getEnvWithDefault("DB_TYPE", "sqlite"),
+			Host:            getEnvWithDefault("DB_HOST", "localhost"),
+			Port:            getEnvWithDefault("DB_PORT", "5432"),
+			Username:        getEnvWithDefault("DB_USER", "wordpress_user"),
+			Password:        getEnvWithDefault("DB_PASSWORD", "wordpress_password"),
+			Dbname:          getEnvWithDefault("DB_NAME", "go_next"),
+			Logmode:         os.Getenv("DB_LOGMODE") == "true",
+			Sslmode:         os.Getenv("DB_SSLMODE") == "require",
+			MaxIdleConns:    getEnvAsInt("DB_MAX_IDLE_CONNS", 10),
+			MaxOpenConns:    getEnvAsInt("DB_MAX_OPEN_CONNS", 100),
+			ConnMaxLifetime: getEnvAsDuration("DB_CONN_MAX_LIFETIME", 1*time.Hour),
+			ConnMaxIdleTime: getEnvAsDuration("DB_CONN_MAX_IDLE_TIME", 30*time.Minute),
 		},
 		Port:      getEnvWithDefault("PORT", "8080"),
 		JwtSecret: getEnvWithDefault("JWT_SECRET", "your-super-secret-jwt-key-here"),
@@ -133,6 +143,18 @@ func getEnvAsInt(name string, defaultVal int) int {
 		return defaultVal
 	}
 	val, err := strconv.Atoi(valStr)
+	if err != nil {
+		return defaultVal
+	}
+	return val
+}
+
+func getEnvAsDuration(name string, defaultVal time.Duration) time.Duration {
+	valStr := os.Getenv(name)
+	if valStr == "" {
+		return defaultVal
+	}
+	val, err := time.ParseDuration(valStr)
 	if err != nil {
 		return defaultVal
 	}

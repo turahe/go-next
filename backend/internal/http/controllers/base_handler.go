@@ -1,11 +1,13 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"go-next/internal/http/responses"
 	"go-next/pkg/database"
+	"go-next/pkg/validation"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -14,12 +16,16 @@ import (
 
 // BaseHandler provides common functionality for all handlers
 type BaseHandler struct {
-	logger *zap.Logger
+	logger    *zap.Logger
+	validator *validation.Validator
 }
 
 // NewBaseHandler creates a new base handler
 func NewBaseHandler(logger *zap.Logger) *BaseHandler {
-	return &BaseHandler{logger: logger}
+	return &BaseHandler{
+		logger:    logger,
+		validator: validation.NewValidator(),
+	}
 }
 
 // GetUserIDFromContext safely extracts user ID from gin context
@@ -186,4 +192,54 @@ func (h *BaseHandler) ValidatePermission(c *gin.Context, permission string) erro
 	// TODO: Implement actual permission checking
 	// This is a placeholder for the permission system
 	return nil
+}
+
+// ValidateRequestParams validates request parameters using Laravel-style validation
+func (h *BaseHandler) ValidateRequestParams(c *gin.Context, request interface{}) error {
+	// Bind JSON to request struct
+	if err := c.ShouldBindJSON(&request); err != nil {
+		return err
+	}
+
+	// Validate the request
+	result := h.validator.Validate(request)
+	if !result.IsValid {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"message": "Validation failed",
+			"errors":  result.Errors,
+		})
+		return fmt.Errorf("validation failed")
+	}
+
+	return nil
+}
+
+// ValidateRequestWithRules validates request with custom rules
+func (h *BaseHandler) ValidateRequestWithRules(c *gin.Context, request interface{}, rules map[string]string) error {
+	// Bind JSON to request struct
+	if err := c.ShouldBindJSON(&request); err != nil {
+		return err
+	}
+
+	// Validate with custom rules
+	result := h.validator.ValidateWithRules(request, rules)
+	if !result.IsValid {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"message": "Validation failed",
+			"errors":  result.Errors,
+		})
+		return fmt.Errorf("validation failed")
+	}
+
+	return nil
+}
+
+// AddCustomValidationMessage adds a custom validation message
+func (h *BaseHandler) AddCustomValidationMessage(field, rule, message string) {
+	h.validator.AddCustomMessage(field, rule, message)
+}
+
+// AddCustomValidationMessages adds multiple custom validation messages
+func (h *BaseHandler) AddCustomValidationMessages(messages map[string]string) {
+	h.validator.AddCustomMessages(messages)
 }

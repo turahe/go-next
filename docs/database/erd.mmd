@@ -1,0 +1,266 @@
+erDiagram
+    %% Core User Management
+    users {
+        uuid id PK "Primary key"
+        string username UK "Unique username for login"
+        string email UK "Unique email address"
+        string password "Hashed password"
+        string phone UK "Phone number for verification"
+        timestamp email_verified_at "Email verification timestamp"
+        timestamp phone_verified_at "Phone verification timestamp"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    %% Role Management
+    roles {
+        uuid id PK "Primary key"
+        string name UK "Role name (admin, user, etc.)"
+        string description "Role description"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    user_roles {
+        uuid id PK "Primary key"
+        uuid user_id FK "Reference to users table"
+        uuid role_id FK "Reference to roles table"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    %% Organization Management
+    organizations {
+        uuid id PK "Primary key"
+        string name "Organization name"
+        string slug UK "URL-friendly identifier"
+        string description "Organization description"
+        string code UK "Unique organization code"
+        string type "Organization type (company, department, etc.)"
+        uuid parent_id FK "Parent organization for hierarchy"
+        int record_left "Nested set model - left boundary"
+        int record_right "Nested set model - right boundary"
+        int record_dept "Nested set model - depth level"
+        int record_ordering "Sort order within siblings"
+        uuid created_by FK "User who created the record"
+        uuid updated_by FK "User who last updated"
+        uuid deleted_by FK "User who soft deleted"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    organization_users {
+        uuid id PK "Primary key"
+        uuid organization_id FK "Reference to organizations table"
+        uuid user_id FK "Reference to users table"
+        string role "User role within organization"
+        boolean is_active "Whether the membership is active"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    %% Content Management
+    categories {
+        uuid id PK "Primary key"
+        string name "Category name"
+        string slug UK "URL-friendly identifier"
+        string description "Category description"
+        boolean is_active "Whether category is active"
+        int sort_order "Display order"
+        uuid parent_id FK "Parent category for hierarchy"
+        int record_left "Nested set model - left boundary"
+        int record_right "Nested set model - right boundary"
+        int record_dept "Nested set model - depth level"
+        int record_ordering "Sort order within siblings"
+        uuid created_by FK "User who created the record"
+        uuid updated_by FK "User who last updated"
+        uuid deleted_by FK "User who soft deleted"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    posts {
+        uuid id PK "Primary key"
+        string title "Post title"
+        string slug UK "URL-friendly identifier"
+        string excerpt "Short summary"
+        string description "Full post description"
+        string status "Publication status (draft/published/archived)"
+        timestamp published_at "Publication timestamp"
+        uuid category_id FK "Reference to categories table"
+        int view_count "Number of views"
+        boolean public "Whether post is publicly visible"
+        uuid created_by FK "User who created the post"
+        uuid updated_by FK "User who last updated"
+        uuid deleted_by FK "User who soft deleted"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    comments {
+        uuid id PK "Primary key"
+        uuid model_id FK "Polymorphic reference ID"
+        string model_type "Polymorphic reference type (post/comment)"
+        string title "Comment title"
+        string description "Comment content"
+        string status "Approval status (pending/approved/rejected)"
+        timestamp approved_at "Approval timestamp"
+        uuid parent_id FK "Parent comment for threading"
+        int record_left "Nested set model - left boundary"
+        int record_right "Nested set model - right boundary"
+        int record_dept "Nested set model - depth level"
+        int record_ordering "Sort order within siblings"
+        uuid created_by FK "User who created the comment"
+        uuid updated_by FK "User who last updated"
+        uuid deleted_by FK "User who soft deleted"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    contents {
+        uuid id PK "Primary key"
+        uuid model_id FK "Polymorphic reference ID"
+        string model_type "Polymorphic reference type (post)"
+        string type "Content type (html/markdown/json/text)"
+        text content "Actual content data"
+        int sort_order "Display order"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    %% Media Management
+    media {
+        uuid id PK "Primary key"
+        string uuid UK "Unique file identifier"
+        string file_name "Stored file name"
+        string original_name "Original uploaded file name"
+        string mime_type "File MIME type"
+        bigint size "File size in bytes"
+        string hash "File hash for deduplication"
+        string disk "Storage disk (local/s3/gcs)"
+        string path "File storage path"
+        string url "Public access URL"
+        int width "Image/video width"
+        int height "Image/video height"
+        float duration "Video/audio duration"
+        json custom_attribute "Additional metadata"
+        boolean is_public "Whether file is publicly accessible"
+        uuid created_by FK "User who uploaded the file"
+        uuid updated_by FK "User who last updated"
+        uuid deleted_by FK "User who soft deleted"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    mediables {
+        uuid media_id PK,FK "Reference to media table"
+        uuid mediable_id PK "Polymorphic reference ID"
+        string mediable_type PK "Polymorphic reference type"
+        string group "Media group (gallery, thumbnail, etc.)"
+        int sort_order "Display order within group"
+    }
+
+    %% Tagging System
+    tags {
+        bigint id PK "Primary key"
+        string name UK "Tag name"
+        string slug UK "URL-friendly identifier"
+        string description "Tag description"
+        string color "Tag color for UI"
+        string type "Tag type (general/category/feature/system)"
+        boolean is_active "Whether tag is active"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    tagged_entities {
+        bigint id PK "Primary key"
+        bigint tag_id FK "Reference to tags table"
+        bigint entity_id "Polymorphic reference ID"
+        string entity_type "Polymorphic reference type"
+        string group "Tag group for organization"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+    }
+
+    %% Notification System
+    notifications {
+        uuid id PK "Primary key"
+        uuid user_id FK "Reference to users table"
+        string type "Notification type (success/error/warning/info)"
+        string title "Notification title"
+        text message "Notification message content"
+        json data "Additional notification data"
+        boolean read "Whether notification has been read"
+        string priority "Priority level (low/normal/high/urgent)"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    %% Casbin RBAC
+    casbin_rule {
+        bigint id PK "Primary key"
+        string ptype "Policy type (p/g)"
+        string v0 "Subject (user/role)"
+        string v1 "Object (resource)"
+        string v2 "Action (read/write/delete)"
+        string v3 "Domain (optional)"
+        string v4 "Additional field"
+        string v5 "Additional field"
+    }
+
+    %% Menu System
+    menus {
+        uuid id PK "Primary key"
+        string name "Menu item name"
+        string slug UK "URL-friendly identifier"
+        string description "Menu item description"
+        string type "Menu type (link/button/dropdown)"
+        string url "Navigation URL"
+        string icon "Menu icon"
+        int sort_order "Display order"
+        uuid parent_id FK "Parent menu item for hierarchy"
+        boolean is_active "Whether menu item is active"
+        timestamp created_at "Record creation time"
+        timestamp updated_at "Last update time"
+        timestamp deleted_at "Soft delete timestamp"
+    }
+
+    role_menus {
+        uuid role_id PK,FK "Reference to roles table"
+        uuid menu_id PK,FK "Reference to menus table"
+    }
+
+    %% Relationships
+    users ||--o{ user_roles : "has"
+    roles ||--o{ user_roles : "assigned_to"
+    users ||--o{ organization_users : "belongs_to"
+    organizations ||--o{ organization_users : "has"
+    organizations ||--o{ organizations : "parent_child"
+    categories ||--o{ categories : "parent_child"
+    categories ||--o{ posts : "contains"
+    posts ||--o{ comments : "has"
+    comments ||--o{ comments : "parent_child"
+    posts ||--o{ contents : "has"
+    posts ||--o{ mediables : "has"
+    media ||--o{ mediables : "belongs_to"
+    tags ||--o{ tagged_entities : "applied_to"
+    users ||--o{ notifications : "receives"
+    users ||--o{ posts : "creates"
+    users ||--o{ comments : "creates"
+    users ||--o{ media : "uploads"
+    menus ||--o{ menus : "parent_child"
+    roles ||--o{ role_menus : "has"
+    menus ||--o{ role_menus : "assigned_to" 

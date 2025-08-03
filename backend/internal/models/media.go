@@ -9,24 +9,21 @@ import (
 
 // Media represents a media file (image, video, document, etc.)
 type Media struct {
-	BaseModel
-	UUID            string     `json:"uuid" gorm:"uniqueIndex;not null;size:36"`
-	FileName        string     `json:"file_name" gorm:"not null;size:255" validate:"required,min=1,max=255"`
-	OriginalName    string     `json:"original_name" gorm:"not null;size:255" validate:"required,min=1,max=255"`
-	MimeType        string     `json:"mime_type" gorm:"not null;size:100" validate:"required,min=1,max=100"`
-	Size            int64      `json:"size" gorm:"not null;check:size > 0" validate:"required,gt=0"`
-	Hash            string     `json:"hash" gorm:"size:64;index"`
-	Disk            string     `json:"disk" gorm:"default:'local';size:20" validate:"oneof=local s3 gcs"`
-	Path            string     `json:"path" gorm:"not null;size:500" validate:"required,min=1,max=500"`
-	URL             string     `json:"url" gorm:"size:1000"`
-	Width           *int       `json:"width,omitempty"`
-	Height          *int       `json:"height,omitempty"`
-	Duration        *float64   `json:"duration,omitempty"`
-	CustomAttribute string     `json:"custom_attribute" gorm:"type:json"`
-	IsPublic        bool       `json:"is_public" gorm:"default:true;index"`
-	CreatedBy       *uuid.UUID `json:"created_by,omitempty" gorm:"type:uuid;index"`
-	UpdatedBy       *uuid.UUID `json:"updated_by,omitempty" gorm:"type:uuid;index"`
-	DeletedBy       *uuid.UUID `json:"deleted_by,omitempty" gorm:"type:uuid;index"`
+	BaseModelWithOrdering
+	UUID            string   `json:"uuid" gorm:"uniqueIndex;not null;size:36"`
+	FileName        string   `json:"file_name" gorm:"not null;size:255" validate:"required,min=1,max=255"`
+	OriginalName    string   `json:"original_name" gorm:"not null;size:255" validate:"required,min=1,max=255"`
+	MimeType        string   `json:"mime_type" gorm:"not null;size:100" validate:"required,min=1,max=100"`
+	Size            int64    `json:"size" gorm:"not null;check:size > 0" validate:"required,gt=0"`
+	Hash            string   `json:"hash" gorm:"size:64;index"`
+	Disk            string   `json:"disk" gorm:"default:'local';size:20" validate:"oneof=local s3 gcs"`
+	Path            string   `json:"path" gorm:"not null;size:500" validate:"required,min=1,max=500"`
+	URL             string   `json:"url" gorm:"size:1000"`
+	Width           *int     `json:"width,omitempty"`
+	Height          *int     `json:"height,omitempty"`
+	Duration        *float64 `json:"duration,omitempty"`
+	CustomAttribute string   `json:"custom_attribute" gorm:"type:json"`
+	IsPublic        bool     `json:"is_public" gorm:"default:true;index"`
 
 	// Relationships
 	Posts []Post `json:"posts,omitempty" gorm:"many2many:mediables;constraint:OnDelete:CASCADE"`

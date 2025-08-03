@@ -11,10 +11,14 @@ func RegisterPostRoutes(api *gin.RouterGroup, postHandler controllers.PostHandle
 	posts := api.Group("/posts")
 	{
 		posts.GET("", postHandler.GetPosts)
-		posts.GET(":id", postHandler.GetPost)
 		posts.POST("", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "POST"), postHandler.CreatePost)
+
+		// Comments route must come before the :id route to avoid conflicts
+		posts.GET(":id/comments", commentHandler.GetCommentsByPost)
+
+		// Post CRUD routes
+		posts.GET(":id", postHandler.GetPost)
 		posts.PUT(":id", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "PUT"), postHandler.UpdatePost)
 		posts.DELETE(":id", middleware.JWTMiddleware(), middleware.CasbinMiddleware("/api/posts", "DELETE"), postHandler.DeletePost)
-		posts.GET(":post_id/comments", commentHandler.GetCommentsByPost)
 	}
 }

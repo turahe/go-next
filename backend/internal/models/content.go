@@ -1,6 +1,7 @@
 package models
 
 import (
+	"github.com/gomarkdown/markdown"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -8,11 +9,12 @@ import (
 // Content represents polymorphic content for various models
 type Content struct {
 	BaseModel
-	ModelID   uuid.UUID `json:"model_id" gorm:"type:uuid;not null;index" validate:"required"`
-	ModelType string    `json:"model_type" gorm:"not null;size:50;index" validate:"required,min=1,max=50"`
-	Type      string    `json:"type" gorm:"not null;size:20" validate:"required,oneof=html markdown json text"`
-	Content   string    `json:"content" gorm:"type:text;not null" validate:"required,min=1"`
-	SortOrder int       `json:"sort_order" gorm:"default:0;index"`
+	ModelID         uuid.UUID `json:"model_id" gorm:"type:uuid;not null;index" validate:"required"`
+	ModelType       string    `json:"model_type" gorm:"not null;size:50;index" validate:"required,min=1,max=50"`
+	Type            string    `json:"type" gorm:"not null;size:20" validate:"required,oneof=html markdown json text"`
+	ContentRaw      string    `json:"content_raw" gorm:"type:text;not null" validate:"required,min=1"`
+	ContentRendered string    `json:"content_rendered" gorm:"type:text;not null" validate:"required,min=1"`
+	SortOrder       int       `json:"sort_order" gorm:"default:0;index"`
 }
 
 // TableName specifies the table name for Content
@@ -25,11 +27,26 @@ func (c *Content) BeforeCreate(tx *gorm.DB) error {
 	if c.ID == uuid.Nil {
 		c.ID = uuid.New()
 	}
+	if c.Type == "html" {
+		c.ContentRendered = c.ContentRaw
+	} else if c.Type == "markdown" {
+		c.ContentRendered = string(markdown.ToHTML([]byte(c.ContentRaw), nil, nil))
+	} else if c.Type == "json" {
+		c.ContentRendered = c.ContentRaw
+	}
+
 	return nil
 }
 
 // BeforeUpdate hook for Content
 func (c *Content) BeforeUpdate(tx *gorm.DB) error {
+	if c.Type == "html" {
+		c.ContentRendered = c.ContentRaw
+	} else if c.Type == "markdown" {
+		c.ContentRendered = string(markdown.ToHTML([]byte(c.ContentRaw), nil, nil))
+	} else if c.Type == "json" {
+		c.ContentRendered = c.ContentRaw
+	}
 	return nil
 }
 

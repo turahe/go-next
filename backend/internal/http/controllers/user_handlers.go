@@ -13,6 +13,7 @@ import (
 	"go-next/pkg/database"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -43,14 +44,18 @@ func NewUserHandler(userService services.UserService) UserHandler {
 // @Failure      404  {object}  map[string]string
 // @Router       /users/{id} [get]
 func (h *userHandler) GetUserProfile(c *gin.Context) {
-	id := c.Param("id")
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID format"})
+		return
+	}
 	user, err := h.UserService.GetUserByID(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 	// Hide password hash
-	user.PasswordHash = ""
 	c.JSON(http.StatusOK, user)
 }
 
@@ -69,9 +74,14 @@ func (h *userHandler) GetUserProfile(c *gin.Context) {
 // @Failure      500   {object}  map[string]string
 // @Router       /users/{id} [put]
 func (h *userHandler) UpdateUserProfile(c *gin.Context) {
-	id := c.Param("id")
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID format"})
+		return
+	}
 	userID, exists := c.Get("user_id")
-	if !exists || strconv.Itoa(int(userID.(uint))) != id {
+	if !exists || strconv.Itoa(int(userID.(uint))) != idStr {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You can only update your own profile"})
 		return
 	}
@@ -89,11 +99,16 @@ func (h *userHandler) UpdateUserProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, requests.FormatValidationError(err))
 		return
 	}
-	if err := h.UserService.UpdateUserProfile(user, input.Username, input.Email, input.Phone, input.EmailVerified, input.PhoneVerified); err != nil {
+	// Update user fields
+	user.Username = input.Username
+	user.Email = input.Email
+	user.Phone = input.Phone
+	user.EmailVerified = input.EmailVerified
+	user.PhoneVerified = input.PhoneVerified
+	if err := h.UserService.UpdateUser(user); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 		return
 	}
-	user.PasswordHash = ""
 	c.JSON(http.StatusOK, user)
 }
 
@@ -110,7 +125,12 @@ func (h *userHandler) UpdateUserProfile(c *gin.Context) {
 // @Failure      404   {object}  map[string]string
 // @Router       /users/{id}/role [put]
 func (h *userHandler) UpdateUserRole(c *gin.Context) {
-	id := c.Param("id")
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID format"})
+		return
+	}
 	user, err := h.UserService.GetUserByID(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
@@ -137,7 +157,6 @@ func (h *userHandler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 	user.Roles = []models.Role{role}
-	user.PasswordHash = ""
 	c.JSON(http.StatusOK, user)
 }
 
@@ -179,11 +198,6 @@ func (h *userHandler) GetUsers(c *gin.Context) {
 		return
 	}
 
-	// Hide password hashes
-	for i := range users {
-		users[i].PasswordHash = ""
-	}
-
 	// Send Laravel-style pagination response
 	responses.SendLaravelPaginationWithMessage(c, "Users retrieved successfully", users, total, int64(params.Page), int64(params.PerPage))
 }
@@ -194,13 +208,13 @@ func (h *userHandler) GetUsers(c *gin.Context) {
 // @Tags         users
 // @Accept       json
 // @Produce      json
-// @Param        user  body      requests.AuthRequest true  "User creation details"
+// @Param        user  body      requests.RegisterRequest true  "User creation details"
 // @Success      201   {object}  models.User
 // @Failure      400   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
 // @Router       /users [post]
 func (h *userHandler) UserCreate(c *gin.Context) {
-	var input requests.AuthRequest
+	var input requests.CreateUserRequest
 	if !requests.ValidateRequest(c, &input) {
 		return
 	}
@@ -215,7 +229,7 @@ func (h *userHandler) UserCreate(c *gin.Context) {
 			return err
 		}
 		user := &models.User{
-			Username: input.Username,
+			Username: input.UserName,
 			Email:    input.Email,
 			Roles:    []models.Role{role},
 		}
@@ -227,7 +241,6 @@ func (h *userHandler) UserCreate(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return err
 		}
-		user.PasswordHash = ""
 		c.JSON(http.StatusCreated, user)
 		return nil
 	}); err != nil {
@@ -246,18 +259,16 @@ func (h *userHandler) UserCreate(c *gin.Context) {
 // @Failure      500  {object}  map[string]string
 // @Router       /users/{id} [delete]
 func (h *userHandler) DeleteUser(c *gin.Context) {
-	id := c.Param("id")
-
-	// Check if user exists
-	user, err := h.UserService.GetUserByID(id)
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID format"})
 		return
 	}
 
-	// Delete user
-	if err := database.DB.Delete(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+	// Delete user using the service
+	if err := h.UserService.DeleteUser(id); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 

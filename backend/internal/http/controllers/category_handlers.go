@@ -27,11 +27,10 @@ type CategoryHandler interface {
 
 type categoryHandler struct {
 	CategoryService services.CategoryService
-	MediaService    services.MediaService
 }
 
-func NewCategoryHandler(categoryService services.CategoryService, mediaService services.MediaService) CategoryHandler {
-	return &categoryHandler{CategoryService: categoryService, MediaService: mediaService}
+func NewCategoryHandler(categoryService services.CategoryService) CategoryHandler {
+	return &categoryHandler{CategoryService: categoryService}
 }
 
 // GetCategories godoc
@@ -128,24 +127,6 @@ func (h *categoryHandler) CreateCategory(c *gin.Context) {
 	}
 	if reqParams.ParentID != nil {
 		category.ParentID = reqParams.ParentID
-	}
-	file, fileHeader, err := c.Request.FormFile("image")
-	if err == nil && file != nil && fileHeader != nil {
-		media, err := h.MediaService.UploadAndSaveMedia(file, fileHeader, nil)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image"})
-			return
-		}
-		if err := h.CategoryService.CreateCategory(&category); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category"})
-			return
-		}
-		if err := h.MediaService.AssociateMedia(media.ID, category.ID, "categories", "image"); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to associate image with category"})
-			return
-		}
-		c.JSON(http.StatusCreated, category)
-		return
 	}
 	if err := h.CategoryService.CreateCategory(&category); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create category"})

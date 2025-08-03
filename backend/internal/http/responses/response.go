@@ -73,7 +73,6 @@ func (resp *CommonResponse) UnwrapData(target interface{}) error {
 	return nil
 }
 
-// FormatValidationError formats validation errors in Laravel style
 func FormatValidationError(err error, c *gin.Context) ValidationErrorResponse {
 	var validationErrors []ValidationError
 

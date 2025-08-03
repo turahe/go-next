@@ -8,8 +8,8 @@ import (
 	"go-next/internal/services"
 	"go-next/pkg/config"
 	"go-next/pkg/database"
-	"go-next/pkg/email"
-	"go-next/pkg/redis"
+	"go-next/pkg/logger"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -20,40 +20,26 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var Emailer *email.EmailService
-var RedisClient *redis.RedisService
-
 // GetConfig returns the application configuration
 func GetConfig() *config.Configuration {
 	return config.GetConfig()
 }
 
-func InitEmailer() {
-	cfg := config.GetConfig()
-	Emailer = email.NewEmailService(cfg.SMTP)
-}
-
-func InitRedis() {
-	cfg := config.GetConfig()
-	RedisClient = redis.NewRedisService(cfg.Redis)
-	services.GlobalRedisClient = RedisClient
-}
-
 func RunServer(host, port string) {
-	// Initialize services
+	// Initialize database
 	if err := database.Setup(); err != nil {
-		log.Fatalf("Failed to setup database: %v", err)
+		logger.Fatalf("Failed to setup database: %v", err)
 	}
 
+	// Initialize services
+	services.InitializeServices(nil, nil, logger.LogLevelInfo)
+
+	// Initialize Casbin
 	if err := services.InitCasbin(); err != nil {
-		log.Fatalf("Failed to initialize Casbin: %v", err)
+		logger.Fatalf("Failed to initialize Casbin: %v", err)
 	}
 
-	// Initialize Redis and Email services
-	InitRedis()
-	InitEmailer()
-
-	// Set Gin mode based on environment
+	// Set Gin mode based on the environment
 	ginMode := os.Getenv("GIN_MODE")
 	if ginMode == "" {
 		ginMode = os.Getenv("APP_ENV")
@@ -67,6 +53,10 @@ func RunServer(host, port string) {
 	}
 
 	r := gin.New()
+
+	f, _ := os.OpenFile("log/gin.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	gin.DefaultWriter = io.MultiWriter(f)
+	r.Use(gin.LoggerWithWriter(f))
 
 	// Use custom logger and recovery middleware
 	r.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
@@ -87,9 +77,9 @@ func RunServer(host, port string) {
 	// Add middleware
 	r.Use(middleware.CORSMiddleware())
 	r.Use(middleware.RateLimitMiddleware())
-	r.Use(middleware.RequestIDMiddleware())
-	r.Use(middleware.ResponseTimeMiddleware())
-	r.Use(middleware.ValidationMiddleware())
+	//r.Use(middleware.RequestIDMiddleware())
+	//r.Use(middleware.ResponseTimeMiddleware())
+	//r.Use(middleware.ValidationMiddleware())
 
 	// Register routes
 	routers.RegisterRoutes(r)

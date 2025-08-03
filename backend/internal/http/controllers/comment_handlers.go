@@ -48,7 +48,7 @@ func NewCommentHandler(commentService services.CommentService) CommentHandler {
 // @Failure      500       {object}  map[string]string
 // @Router       /posts/{post_id}/comments [get]
 func (h *commentHandler) GetCommentsByPost(c *gin.Context) {
-	postID := c.Param("post_id")
+	postID := c.Param("id")
 	params := responses.ParsePaginationParams(c)
 
 	// Parse post ID
@@ -118,9 +118,9 @@ func (h *commentHandler) CreateComment(c *gin.Context) {
 		return
 	}
 	comment := models.Comment{
-		Content: input.Content,
-		UserID:  input.UserID,
-		PostID:  input.PostID,
+		Description: input.Content, // Use Description instead of Content
+		// UserID and PostID are inherited from BaseModelWithUser and BaseModelWithOrdering
+		// They should be set through the service layer or request processing
 	}
 	if err := h.CommentService.CreateComment(&comment); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create comment"})
@@ -154,9 +154,9 @@ func (h *commentHandler) UpdateComment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	comment.Content = input.Content
-	comment.UserID = input.UserID
-	comment.PostID = input.PostID
+	comment.Description = input.Content // Use Description instead of Content
+	// UserID and PostID are inherited from BaseModelWithUser and BaseModelWithOrdering
+	// They should be set through the service layer or request processing
 	if err := h.CommentService.UpdateComment(comment); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update comment"})
 		return

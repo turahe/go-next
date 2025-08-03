@@ -1,6 +1,8 @@
 package models
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -10,8 +12,8 @@ type Role struct {
 	BaseModel
 	Name        string `json:"name" gorm:"uniqueIndex;not null;size:50" validate:"required,min=2,max=50"`
 	Description string `json:"description" gorm:"size:255"`
-	IsActive    bool   `json:"is_active" gorm:"default:true;index"`
 	Users       []User `json:"users,omitempty" gorm:"many2many:user_roles;constraint:OnDelete:CASCADE"`
+	Menus       []Menu `json:"menus,omitempty" gorm:"many2many:role_menus;constraint:OnDelete:CASCADE"`
 }
 
 // TableName specifies the table name for Role
@@ -34,15 +36,15 @@ func (r *Role) BeforeUpdate(tx *gorm.DB) error {
 
 // GetIsActive returns the active status
 func (r *Role) GetIsActive() bool {
-	return r.IsActive
+	return r.DeletedAt.Time.IsZero()
 }
 
 // Activate activates the role
 func (r *Role) Activate() {
-	r.IsActive = true
+	r.DeletedAt = gorm.DeletedAt{Time: time.Time{}, Valid: false}
 }
 
 // Deactivate deactivates the role
 func (r *Role) Deactivate() {
-	r.IsActive = false
+	r.DeletedAt = gorm.DeletedAt{Time: time.Now(), Valid: true}
 }

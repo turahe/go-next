@@ -102,100 +102,82 @@ type TagResponse struct {
 	Slug string `json:"slug"`
 }
 
-// Conversion functions
-
-// ToBlogPostResponse converts a models.Post to BlogPostResponse
-func ToBlogPostResponse(p *models.Post) *BlogPostResponse {
-	var category *CategoryResponse
-	if p.Category != nil && p.Category.ID != uuid.Nil {
-		category = &CategoryResponse{
-			ID:   p.Category.ID,
-			Name: p.Category.Name,
-			Slug: p.Category.Slug,
-		}
+// ToBlogPostResponse converts a Post model to BlogPostResponse
+func ToBlogPostResponse(post *models.Post) *BlogPostResponse {
+	if post == nil {
+		return nil
 	}
 
-	comments := make([]CommentResponse, len(p.Comments))
-	for i, comment := range p.Comments {
-		var commentUser *UserResponse
-		if comment.User != nil {
-			commentUser = &UserResponse{
-				ID:       comment.UserID,
-				Username: comment.User.Username,
-				Email:    comment.User.Email,
+	response := &BlogPostResponse{
+		ID:        post.ID,
+		Title:     post.Title,
+		Slug:      post.Slug,
+		Content:   post.Description, // Post uses Description instead of Content
+		Excerpt:   post.Excerpt,
+		Status:    string(post.Status), // Convert PostStatus to string
+		Public:    post.Public,
+		ViewCount: int64(post.ViewCount), // Convert int to int64
+		CreatedAt: post.CreatedAt,
+		UpdatedAt: post.UpdatedAt,
+	}
+
+	if post.PublishedAt != nil {
+		response.PublishedAt = post.PublishedAt
+	}
+
+	if post.CategoryID != nil {
+		response.CategoryID = post.CategoryID
+		if post.Category != nil {
+			response.Category = &CategoryResponse{
+				ID:   post.Category.ID,
+				Name: post.Category.Name,
+				Slug: post.Category.Slug,
 			}
 		}
-		comments[i] = CommentResponse{
-			ID:        comment.ID,
-			Content:   comment.Content,
-			User:      commentUser,
-			CreatedAt: comment.CreatedAt,
+	}
+
+	// Post doesn't have UserID field, it's inherited from BaseModelWithUser
+	// We can get it from the CreatedBy field if needed
+	if post.CreatedBy != nil {
+		response.UserID = post.CreatedBy
+	}
+
+	// Convert comments if available
+	if len(post.Comments) > 0 {
+		response.Comments = make([]CommentResponse, len(post.Comments))
+		for i, comment := range post.Comments {
+			response.Comments[i] = CommentResponse{
+				ID:        comment.ID,
+				Content:   comment.Description, // Comment uses Description instead of Content
+				CreatedAt: comment.CreatedAt,
+			}
+			if comment.User != nil {
+				response.Comments[i].User = &UserResponse{
+					ID:       comment.User.ID,
+					Username: comment.User.Username,
+					Email:    comment.User.Email,
+				}
+			}
 		}
 	}
 
-	media := make([]MediaResponse, len(p.Media))
-	for i, m := range p.Media {
-		media[i] = MediaResponse{
-			ID:       m.ID,
-			Filename: m.FileName,
-			URL:      m.URL,
-			Type:     m.MimeType,
+	// Convert media if available
+	if len(post.Media) > 0 {
+		response.Media = make([]MediaResponse, len(post.Media))
+		for i, media := range post.Media {
+			response.Media[i] = MediaResponse{
+				ID:       media.ID,
+				Filename: media.FileName,
+				URL:      media.URL,
+				Type:     media.MimeType, // Media uses MimeType instead of FileType
+			}
 		}
 	}
 
-	return &BlogPostResponse{
-		ID:          p.ID,
-		Title:       p.Title,
-		Slug:        p.Slug,
-		Content:     p.Content,
-		Excerpt:     p.Excerpt,
-		Status:      p.Status,
-		Public:      p.Public,
-		ViewCount:   p.ViewCount,
-		CategoryID:  p.CategoryID,
-		Category:    category,
-		UserID:      p.CreatedBy,
-		Comments:    comments,
-		Media:       media,
-		PublishedAt: p.PublishedAt,
-		CreatedAt:   p.CreatedAt,
-		UpdatedAt:   p.UpdatedAt,
-	}
+	return response
 }
 
-// ToBlogPostSimpleResponse converts a models.Post to BlogPostSimpleResponse
-func ToBlogPostSimpleResponse(p *models.Post) *BlogPostSimpleResponse {
-	var category *CategoryResponse
-	if p.Category != nil && p.Category.ID != uuid.Nil {
-		category = &CategoryResponse{
-			ID:   p.Category.ID,
-			Name: p.Category.Name,
-			Slug: p.Category.Slug,
-		}
-	}
-
-	return &BlogPostSimpleResponse{
-		ID:          p.ID,
-		Title:       p.Title,
-		Slug:        p.Slug,
-		Excerpt:     p.Excerpt,
-		ViewCount:   p.ViewCount,
-		Category:    category,
-		PublishedAt: p.PublishedAt,
-		CreatedAt:   p.CreatedAt,
-	}
-}
-
-// ToBlogPostResponses converts a slice of models.Post to []*BlogPostResponse
-func ToBlogPostResponses(posts []models.Post) []*BlogPostResponse {
-	responses := make([]*BlogPostResponse, len(posts))
-	for i, post := range posts {
-		responses[i] = ToBlogPostResponse(&post)
-	}
-	return responses
-}
-
-// ToBlogPostSimpleResponses converts a slice of models.Post to []*BlogPostSimpleResponse
+// ToBlogPostSimpleResponses converts a slice of Post models to BlogPostSimpleResponse
 func ToBlogPostSimpleResponses(posts []models.Post) []*BlogPostSimpleResponse {
 	responses := make([]*BlogPostSimpleResponse, len(posts))
 	for i, post := range posts {
@@ -204,100 +186,32 @@ func ToBlogPostSimpleResponses(posts []models.Post) []*BlogPostSimpleResponse {
 	return responses
 }
 
-// ToBlogStatsResponse converts a BlogStats to BlogStatsResponse
-func ToBlogStatsResponse(stats interface{}) *BlogStatsResponse {
-	// Type assertion for stats
-	if s, ok := stats.(map[string]interface{}); ok {
-		return &BlogStatsResponse{
-			TotalPosts:      int64(s["total_posts"].(float64)),
-			PublishedPosts:  int64(s["published_posts"].(float64)),
-			TotalViews:      int64(s["total_views"].(float64)),
-			TotalComments:   int64(s["total_comments"].(float64)),
-			TotalCategories: int64(s["total_categories"].(float64)),
-			TotalTags:       int64(s["total_tags"].(float64)),
+// ToBlogPostSimpleResponse converts a Post model to BlogPostSimpleResponse
+func ToBlogPostSimpleResponse(post *models.Post) *BlogPostSimpleResponse {
+	if post == nil {
+		return nil
+	}
+
+	response := &BlogPostSimpleResponse{
+		ID:        post.ID,
+		Title:     post.Title,
+		Slug:      post.Slug,
+		Excerpt:   post.Excerpt,
+		ViewCount: int64(post.ViewCount), // Convert int to int64
+		CreatedAt: post.CreatedAt,
+	}
+
+	if post.PublishedAt != nil {
+		response.PublishedAt = post.PublishedAt
+	}
+
+	if post.Category != nil {
+		response.Category = &CategoryResponse{
+			ID:   post.Category.ID,
+			Name: post.Category.Name,
+			Slug: post.Category.Slug,
 		}
 	}
-	return &BlogStatsResponse{}
-}
 
-// ToCategoryStatsResponse converts a CategoryStats to CategoryStatsResponse
-func ToCategoryStatsResponse(stats interface{}) *CategoryStatsResponse {
-	// Type assertion for stats
-	if s, ok := stats.(map[string]interface{}); ok {
-		return &CategoryStatsResponse{
-			CategoryID:   uuid.MustParse(s["category_id"].(string)),
-			CategoryName: s["category_name"].(string),
-			CategorySlug: s["category_slug"].(string),
-			PostCount:    int64(s["post_count"].(float64)),
-			ViewCount:    int64(s["view_count"].(float64)),
-		}
-	}
-	return &CategoryStatsResponse{}
-}
-
-// ToCategoryStatsResponses converts a slice of CategoryStats to []*CategoryStatsResponse
-func ToCategoryStatsResponses(stats []interface{}) []*CategoryStatsResponse {
-	responses := make([]*CategoryStatsResponse, len(stats))
-	for i, stat := range stats {
-		responses[i] = ToCategoryStatsResponse(stat)
-	}
-	return responses
-}
-
-// ToMonthlyArchiveResponse converts a MonthlyArchive to MonthlyArchiveResponse
-func ToMonthlyArchiveResponse(archive interface{}) *MonthlyArchiveResponse {
-	// Type assertion for archive
-	if a, ok := archive.(map[string]interface{}); ok {
-		return &MonthlyArchiveResponse{
-			Year:  int(a["year"].(float64)),
-			Month: int(a["month"].(float64)),
-			Count: int64(a["count"].(float64)),
-		}
-	}
-	return &MonthlyArchiveResponse{}
-}
-
-// ToMonthlyArchiveResponses converts a slice of MonthlyArchive to []*MonthlyArchiveResponse
-func ToMonthlyArchiveResponses(archives []interface{}) []*MonthlyArchiveResponse {
-	responses := make([]*MonthlyArchiveResponse, len(archives))
-	for i, archive := range archives {
-		responses[i] = ToMonthlyArchiveResponse(archive)
-	}
-	return responses
-}
-
-// ToCategoryResponse converts a models.Category to CategoryResponse
-func ToCategoryResponse(category *models.Category) *CategoryResponse {
-	return &CategoryResponse{
-		ID:   category.ID,
-		Name: category.Name,
-		Slug: category.Slug,
-	}
-}
-
-// ToCategoryResponses converts a slice of models.Category to []*CategoryResponse
-func ToCategoryResponses(categories []models.Category) []*CategoryResponse {
-	responses := make([]*CategoryResponse, len(categories))
-	for i, category := range categories {
-		responses[i] = ToCategoryResponse(&category)
-	}
-	return responses
-}
-
-// ToTagResponse converts a models.Tag to TagResponse
-func ToTagResponse(tag *models.Tag) *TagResponse {
-	return &TagResponse{
-		ID:   tag.ID,
-		Name: tag.Name,
-		Slug: tag.Slug,
-	}
-}
-
-// ToTagResponses converts a slice of models.Tag to []*TagResponse
-func ToTagResponses(tags []models.Tag) []*TagResponse {
-	responses := make([]*TagResponse, len(tags))
-	for i, tag := range tags {
-		responses[i] = ToTagResponse(&tag)
-	}
-	return responses
+	return response
 }

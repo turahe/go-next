@@ -77,6 +77,22 @@ type MediaService interface {
 	// GetMediaURL returns the public URL for accessing a media file.
 	// Handles different storage backends and CDN configurations.
 	GetMediaURL(media *models.Media) string
+
+	// UploadAndSaveMedia uploads a file and saves it to the database.
+	// This is a convenience method that combines file upload and database save.
+	UploadAndSaveMedia(file multipart.File, fileHeader *multipart.FileHeader, createdBy *uuid.UUID) (*models.Media, error)
+
+	// AssociateMedia associates a media file with another entity.
+	// Creates a many-to-many relationship between media and other models.
+	AssociateMedia(mediaID, mediableID uuid.UUID, mediableType, group string) error
+
+	// Nested Set Model methods
+	GetMediaDescendants(id uuid.UUID) ([]models.Media, error)
+	GetMediaAncestors(id uuid.UUID) ([]models.Media, error)
+	GetMediaSiblings(id uuid.UUID) ([]models.Media, error)
+	MoveMedia(id uuid.UUID, newParentID uuid.UUID) error
+	CreateMediaNested(media *models.Media, parentID *uuid.UUID) error
+	DeleteMediaNested(id uuid.UUID) error
 }
 
 // mediaService implements the MediaService interface.
@@ -163,9 +179,11 @@ func (s *mediaService) UploadFile(file *multipart.FileHeader, userID uuid.UUID, 
 		Size:         file.Size,
 		Disk:         "local",
 		Path:         filePath,
-		CreatedBy:    &userID,
 		IsPublic:     true,
 	}
+
+	// Set the created by field
+	media.CreatedBy = &userID
 
 	// Save to database
 	if err := s.db.Create(media).Error; err != nil {
@@ -576,4 +594,241 @@ func (s *mediaService) generateUniqueFilename(originalName string) string {
 	timestamp := strings.ReplaceAll(time.Now().Format("20060102150405"), " ", "")
 
 	return name + "_" + timestamp + ext
+}
+
+// UploadAndSaveMedia uploads a file and saves it to the database.
+// This is a convenience method that combines file upload and database save.
+//
+// Parameters:
+//   - file: The file to upload
+//   - fileHeader: File header containing metadata
+//   - createdBy: ID of the user who created the media
+//
+// Returns:
+//   - *models.Media: The created media record
+//   - error: Any error encountered during the operation
+func (s *mediaService) UploadAndSaveMedia(file multipart.File, fileHeader *multipart.FileHeader, createdBy *uuid.UUID) (*models.Media, error) {
+	// Validate the file
+	if err := s.ValidateFile(fileHeader); err != nil {
+		return nil, err
+	}
+
+	// Generate unique filename
+	filename := s.generateUniqueFilename(fileHeader.Filename)
+
+	// Create media record
+	media := &models.Media{
+		OriginalName: fileHeader.Filename,
+		FileName:     filename,
+		Path:         filename, // Simplified path for now
+		Size:         fileHeader.Size,
+		MimeType:     fileHeader.Header.Get("Content-Type"),
+	}
+
+	// Set the created by field
+	if createdBy != nil {
+		media.CreatedBy = createdBy
+	}
+
+	// Save to database
+	if err := s.db.Create(media).Error; err != nil {
+		return nil, err
+	}
+
+	return media, nil
+}
+
+// AssociateMedia associates a media file with another entity.
+// Creates a many-to-many relationship between media and other models.
+//
+// Parameters:
+//   - mediaID: ID of the media file
+//   - mediableID: ID of the entity to associate with
+//   - mediableType: Type of the entity (e.g., "categories", "posts")
+//   - group: Group name for the association (e.g., "image", "video")
+//
+// Returns:
+//   - error: Any error encountered during the operation
+func (s *mediaService) AssociateMedia(mediaID, mediableID uuid.UUID, mediableType, group string) error {
+	// Create mediable association
+	mediable := &models.Mediable{
+		MediaID:      mediaID,
+		MediableID:   mediableID,
+		MediableType: mediableType,
+		Group:        group,
+	}
+
+	return s.db.Create(mediable).Error
+}
+
+// Nested Set Model methods for Media
+
+func (s *mediaService) GetMediaDescendants(id uuid.UUID) ([]models.Media, error) {
+	var media models.Media
+	if err := s.db.First(&media, id).Error; err != nil {
+		return nil, err
+	}
+
+	var descendants []models.Media
+	err := s.db.Where("record_left > ? AND record_right < ?", media.RecordLeft, media.RecordRight).
+		Order("record_left ASC").Find(&descendants).Error
+	return descendants, err
+}
+
+func (s *mediaService) GetMediaAncestors(id uuid.UUID) ([]models.Media, error) {
+	var media models.Media
+	if err := s.db.First(&media, id).Error; err != nil {
+		return nil, err
+	}
+
+	var ancestors []models.Media
+	err := s.db.Where("record_left < ? AND record_right > ?", media.RecordLeft, media.RecordRight).
+		Order("record_left ASC").Find(&ancestors).Error
+	return ancestors, err
+}
+
+func (s *mediaService) GetMediaSiblings(id uuid.UUID) ([]models.Media, error) {
+	var media models.Media
+	if err := s.db.First(&media, id).Error; err != nil {
+		return nil, err
+	}
+
+	var siblings []models.Media
+	err := s.db.Where("record_left > ? AND record_right < ? AND record_dept = ?",
+		media.RecordLeft, media.RecordRight, media.RecordDept).
+		Order("record_left ASC").Find(&siblings).Error
+	return siblings, err
+}
+
+func (s *mediaService) MoveMedia(id uuid.UUID, newParentID uuid.UUID) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var media models.Media
+		if err := tx.First(&media, id).Error; err != nil {
+			return err
+		}
+
+		return s.moveMediaSubtree(tx, &media, newParentID)
+	})
+}
+
+func (s *mediaService) CreateMediaNested(media *models.Media, parentID *uuid.UUID) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if parentID != nil {
+			var parent models.Media
+			if err := tx.First(&parent, parentID).Error; err != nil {
+				return err
+			}
+			if parent.RecordRight == 0 {
+				return gorm.ErrRecordNotFound
+			}
+
+			// Update parent's right value
+			tx.Model(&models.Media{}).
+				Where("record_right >= ?", parent.RecordRight).
+				Update("record_right", gorm.Expr("record_right + 2"))
+			tx.Model(&models.Media{}).
+				Where("record_left > ?", parent.RecordRight).
+				Update("record_left", gorm.Expr("record_left + 2"))
+
+			media.RecordLeft = parent.RecordRight
+			media.RecordRight = parent.RecordRight + 1
+			media.RecordDept = parent.RecordDept + 1
+			media.ParentID = parentID
+		} else {
+			// Create as root
+			var maxRight int
+			tx.Model(&models.Media{}).Select("COALESCE(MAX(record_right), 0)").Scan(&maxRight)
+
+			media.RecordLeft = maxRight + 1
+			media.RecordRight = maxRight + 2
+			media.RecordDept = 0
+		}
+
+		return tx.Create(media).Error
+	})
+}
+
+func (s *mediaService) DeleteMediaNested(id uuid.UUID) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var media models.Media
+		if err := tx.First(&media, id).Error; err != nil {
+			return err
+		}
+
+		// Calculate the width of the subtree
+		width := media.RecordRight - media.RecordLeft + 1
+
+		// Delete the media and all its descendants
+		if err := tx.Where("record_left >= ? AND record_right <= ?", media.RecordLeft, media.RecordRight).Delete(&models.Media{}).Error; err != nil {
+			return err
+		}
+
+		// Update the left and right values of remaining nodes
+		tx.Model(&models.Media{}).
+			Where("record_left > ?", media.RecordRight).
+			Update("record_left", gorm.Expr("record_left - ?", width))
+
+		tx.Model(&models.Media{}).
+			Where("record_right > ?", media.RecordRight).
+			Update("record_right", gorm.Expr("record_right - ?", width))
+
+		return nil
+	})
+}
+
+// moveMediaSubtree moves a media and its entire subtree to a new parent
+func (s *mediaService) moveMediaSubtree(tx *gorm.DB, media *models.Media, newParentID uuid.UUID) error {
+	// Calculate the width of the subtree
+	width := media.RecordRight - media.RecordLeft + 1
+
+	// Get the new parent
+	var newParent models.Media
+	if newParentID != uuid.Nil {
+		if err := tx.First(&newParent, newParentID).Error; err != nil {
+			return err
+		}
+	}
+
+	// Calculate the new position
+	var newLeft int
+	if newParentID != uuid.Nil {
+		newLeft = newParent.RecordRight
+	} else {
+		// Moving to root level
+		var maxRight int
+		tx.Model(&models.Media{}).Select("COALESCE(MAX(record_right), 0)").Scan(&maxRight)
+		newLeft = maxRight + 1
+	}
+
+	// Calculate the offset
+	offset := newLeft - media.RecordLeft
+
+	// Update all nodes in the subtree
+	tx.Model(&models.Media{}).
+		Where("record_left >= ? AND record_right <= ?", media.RecordLeft, media.RecordRight).
+		Updates(map[string]interface{}{
+			"record_left":  gorm.Expr("record_left + ?", offset),
+			"record_right": gorm.Expr("record_right + ?", offset),
+			"record_dept":  gorm.Expr("record_dept + ?", newParent.RecordDept-media.RecordDept+1),
+		})
+
+	// Update nodes to the right of the old position
+	tx.Model(&models.Media{}).
+		Where("record_left > ?", media.RecordRight).
+		Update("record_left", gorm.Expr("record_left - ?", width))
+
+	tx.Model(&models.Media{}).
+		Where("record_right > ?", media.RecordRight).
+		Update("record_right", gorm.Expr("record_right - ?", width))
+
+	// Update nodes to the right of the new position
+	tx.Model(&models.Media{}).
+		Where("record_left >= ?", newLeft).
+		Update("record_left", gorm.Expr("record_left + ?", width))
+
+	tx.Model(&models.Media{}).
+		Where("record_right >= ?", newLeft).
+		Update("record_right", gorm.Expr("record_right + ?", width))
+
+	return nil
 }

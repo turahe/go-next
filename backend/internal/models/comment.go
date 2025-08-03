@@ -10,16 +10,16 @@ import (
 // Comment represents a comment on a post
 type Comment struct {
 	BaseModelWithOrdering
-	Content    string     `json:"content" gorm:"type:text;not null" validate:"required,min=1"`
-	Status     string     `json:"status" gorm:"default:'pending';index" validate:"oneof=pending approved rejected"`
-	IsPublic   bool       `json:"is_public" gorm:"default:true;index"`
-	UserID     uuid.UUID  `json:"user_id" gorm:"type:uuid;not null;index" validate:"required"`
-	PostID     uuid.UUID  `json:"post_id" gorm:"type:uuid;not null;index" validate:"required"`
-	ApprovedAt *time.Time `json:"approved_at,omitempty" gorm:"index"`
+	ModelID     uuid.UUID     `json:"model_id" gorm:"type:uuid;not null;index" validate:"required"`
+	ModelType   ModelType     `json:"model_type" gorm:"type:varchar(255);not null;index" validate:"required"`
+	Title       string        `json:"title" gorm:"size:255" validate:"required,min=1,max=255"`
+	Description string        `json:"description" gorm:"size:500"`
+	Status      CommentStatus `json:"status" gorm:"default:'pending';index"`
+	ApprovedAt  *time.Time    `json:"approved_at,omitempty" gorm:"index"`
 
 	// Relationships
-	User     *User     `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
-	Post     *Post     `json:"post,omitempty" gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE"`
+	User     *User     `json:"user,omitempty" gorm:"foreignKey:CreatedBy;constraint:OnDelete:CASCADE"`
+	Post     *Post     `json:"post,omitempty" gorm:"foreignKey:ModelID;constraint:OnDelete:CASCADE"`
 	Parent   *Comment  `json:"parent,omitempty" gorm:"foreignKey:ParentID;constraint:OnDelete:CASCADE"`
 	Children []Comment `json:"children,omitempty" gorm:"foreignKey:ParentID;constraint:OnDelete:CASCADE"`
 }
@@ -44,17 +44,17 @@ func (c *Comment) BeforeUpdate(tx *gorm.DB) error {
 
 // IsApproved checks if the comment is approved
 func (c *Comment) IsApproved() bool {
-	return c.Status == "approved"
+	return c.Status == CommentStatusApproved
 }
 
 // IsRejected checks if the comment is rejected
 func (c *Comment) IsRejected() bool {
-	return c.Status == "rejected"
+	return c.Status == CommentStatusRejected
 }
 
 // IsPending checks if the comment is pending approval
 func (c *Comment) IsPending() bool {
-	return c.Status == "pending"
+	return c.Status == CommentStatusPending
 }
 
 // IsRoot checks if the comment is a root comment
@@ -74,23 +74,13 @@ func (c *Comment) GetDepth() int {
 
 // Approve approves the comment
 func (c *Comment) Approve() {
-	c.Status = "approved"
+	c.Status = CommentStatusApproved
 	now := time.Now()
 	c.ApprovedAt = &now
 }
 
 // Reject rejects the comment
 func (c *Comment) Reject() {
-	c.Status = "rejected"
+	c.Status = CommentStatusRejected
 	c.ApprovedAt = nil
-}
-
-// MakePublic makes the comment public
-func (c *Comment) MakePublic() {
-	c.IsPublic = true
-}
-
-// MakePrivate makes the comment private
-func (c *Comment) MakePrivate() {
-	c.IsPublic = false
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"go-next/internal/dto"
 	"go-next/internal/models"
 	"go-next/pkg/database"
 
@@ -57,15 +58,15 @@ type BlogService interface {
 
 	// GetBlogStats returns comprehensive statistics about the blog including
 	// total posts, published posts, views, comments, categories, and tags.
-	GetBlogStats() (*BlogStats, error)
+	GetBlogStats() (*dto.BlogStats, error)
 
 	// GetCategoryStats returns statistics for each category including
 	// post count and view count for analytics purposes.
-	GetCategoryStats() ([]CategoryStats, error)
+	GetCategoryStats() ([]dto.CategoryStats, error)
 
 	// GetMonthlyArchive returns post counts grouped by year and month
 	// for creating archive navigation and analytics.
-	GetMonthlyArchive() ([]MonthlyArchive, error)
+	GetMonthlyArchive() ([]dto.MonthlyArchive, error)
 
 	// Post management - Administrative methods for post lifecycle management
 
@@ -123,35 +124,6 @@ type BlogService interface {
 // of all blog-related business logic.
 type blogService struct {
 	db *gorm.DB // Database connection for all data operations
-}
-
-// BlogStats represents comprehensive statistics about the blog.
-// This struct is used for analytics, dashboard displays, and API responses.
-type BlogStats struct {
-	TotalPosts      int64 `json:"total_posts"`      // Total number of posts (all statuses)
-	PublishedPosts  int64 `json:"published_posts"`  // Number of published posts
-	TotalViews      int64 `json:"total_views"`      // Total view count across all posts
-	TotalComments   int64 `json:"total_comments"`   // Total comment count across all posts
-	TotalCategories int64 `json:"total_categories"` // Number of active categories
-	TotalTags       int64 `json:"total_tags"`       // Number of active tags
-}
-
-// CategoryStats represents statistics for a specific category.
-// Used for category analytics and performance tracking.
-type CategoryStats struct {
-	CategoryID   uuid.UUID `json:"category_id"`   // Unique identifier for the category
-	CategoryName string    `json:"category_name"` // Human-readable category name
-	CategorySlug string    `json:"category_slug"` // URL-friendly category identifier
-	PostCount    int64     `json:"post_count"`    // Number of posts in this category
-	ViewCount    int64     `json:"view_count"`    // Total views for posts in this category
-}
-
-// MonthlyArchive represents post count for a specific year and month.
-// Used for creating archive navigation and historical analytics.
-type MonthlyArchive struct {
-	Year  int   `json:"year"`  // Year (e.g., 2024)
-	Month int   `json:"month"` // Month (1-12)
-	Count int64 `json:"count"` // Number of posts published in this month
 }
 
 // NewBlogService creates and returns a new instance of BlogService.
@@ -524,7 +496,7 @@ func (s *blogService) SearchPosts(query string, page, perPage int) ([]models.Pos
 // total posts, published posts, views, comments, categories, and tags.
 //
 // Returns:
-//   - *BlogStats: Comprehensive blog statistics
+//   - *dto.BlogStats: Comprehensive blog statistics
 //   - error: Any error encountered during the operation
 //
 // Example:
@@ -535,8 +507,8 @@ func (s *blogService) SearchPosts(query string, page, perPage int) ([]models.Pos
 //	}
 //	fmt.Printf("Total posts: %d, Published: %d, Views: %d\n",
 //	    stats.TotalPosts, stats.PublishedPosts, stats.TotalViews)
-func (s *blogService) GetBlogStats() (*BlogStats, error) {
-	var stats BlogStats
+func (s *blogService) GetBlogStats() (*dto.BlogStats, error) {
+	var stats dto.BlogStats
 
 	// Count total posts
 	if err := s.db.Model(&models.Post{}).Count(&stats.TotalPosts).Error; err != nil {
@@ -586,7 +558,7 @@ func (s *blogService) GetBlogStats() (*BlogStats, error) {
 // post count and view count for analytics purposes.
 //
 // Returns:
-//   - []CategoryStats: List of category statistics
+//   - []dto.CategoryStats: List of category statistics
 //   - error: Any error encountered during the operation
 //
 // Example:
@@ -599,8 +571,8 @@ func (s *blogService) GetBlogStats() (*BlogStats, error) {
 //	    fmt.Printf("Category: %s, Posts: %d, Views: %d\n",
 //	        stat.CategoryName, stat.PostCount, stat.ViewCount)
 //	}
-func (s *blogService) GetCategoryStats() ([]CategoryStats, error) {
-	var stats []CategoryStats
+func (s *blogService) GetCategoryStats() ([]dto.CategoryStats, error) {
+	var stats []dto.CategoryStats
 
 	// Query for category statistics with post counts and view counts
 	err := s.db.Table("categories").
@@ -623,7 +595,7 @@ func (s *blogService) GetCategoryStats() ([]CategoryStats, error) {
 // for creating archive navigation and analytics.
 //
 // Returns:
-//   - []MonthlyArchive: List of monthly post counts
+//   - []dto.MonthlyArchive: List of monthly post counts
 //   - error: Any error encountered during the operation
 //
 // Example:
@@ -635,8 +607,8 @@ func (s *blogService) GetCategoryStats() ([]CategoryStats, error) {
 //	for _, archive := range archives {
 //	    fmt.Printf("%d-%02d: %d posts\n", archive.Year, archive.Month, archive.Count)
 //	}
-func (s *blogService) GetMonthlyArchive() ([]MonthlyArchive, error) {
-	var archives []MonthlyArchive
+func (s *blogService) GetMonthlyArchive() ([]dto.MonthlyArchive, error) {
+	var archives []dto.MonthlyArchive
 
 	// Query for monthly post counts
 	err := s.db.Table("posts").

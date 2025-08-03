@@ -11,17 +11,18 @@ import (
 // User represents a user in the system
 type User struct {
 	BaseModel
-	Username      string     `json:"username" gorm:"uniqueIndex;not null;size:50;check:username ~ '^[a-zA-Z0-9_]+$'" validate:"required,min=3,max=50,alphanum"`
+	Username      string     `json:"username" gorm:"uniqueIndex;not null;size:50;check:username ~ '^[a-zA-Z0-9_]+$'" validate:"required,min=3,max=50,username"`
 	Email         string     `json:"email" gorm:"uniqueIndex;not null;size:255" validate:"required,email"`
-	PasswordHash  string     `json:"-" gorm:"not null;size:255"`
-	Phone         string     `json:"phone" gorm:"uniqueIndex;size:20" validate:"omitempty,len=10"`
-	EmailVerified *time.Time `json:"email_verified,omitempty" gorm:"index"`
-	PhoneVerified *time.Time `json:"phone_verified,omitempty" gorm:"index"`
-	IsActive      bool       `json:"is_active" gorm:"default:true;index"`
-	LastLoginAt   *time.Time `json:"last_login_at,omitempty"`
-	Roles         []Role     `json:"roles,omitempty" gorm:"many2many:user_roles;constraint:OnDelete:CASCADE"`
-	Posts         []Post     `json:"posts,omitempty" gorm:"foreignKey:CreatedBy;constraint:OnDelete:SET NULL"`
-	Comments      []Comment  `json:"comments,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	Password      string     `json:"-" gorm:"not null;size:255"`
+	Phone         string     `json:"phone" gorm:"uniqueIndex;size:20"`
+	EmailVerified *time.Time `json:"email_verified_at,omitempty" gorm:"column:email_verified_at;index"`
+	PhoneVerified *time.Time `json:"phone_verified_at,omitempty" gorm:"column:phone_verified_at;index"`
+	// Relationships
+	Roles         []Role         `json:"roles,omitempty" gorm:"many2many:user_roles;constraint:OnDelete:CASCADE"`
+	Posts         []Post         `json:"posts,omitempty" gorm:"foreignKey:CreatedBy;constraint:OnDelete:SET NULL"`
+	Comments      []Comment      `json:"comments,omitempty" gorm:"foreignKey:CreatedBy;constraint:OnDelete:CASCADE"`
+	Organizations []Organization `json:"organizations,omitempty" gorm:"many2many:organization_users;constraint:OnDelete:CASCADE"`
+	Media         []Media        `json:"media,omitempty" gorm:"many2many:mediables;constraint:OnDelete:CASCADE"`
 }
 
 // TableName specifies the table name for User
@@ -44,7 +45,7 @@ func (u *User) BeforeUpdate(tx *gorm.DB) error {
 
 // CheckPassword compares the provided password with the stored hash
 func (u *User) CheckPassword(password string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
+	err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password))
 	return err == nil
 }
 
@@ -54,7 +55,7 @@ func (u *User) HashPassword(password string) error {
 	if err != nil {
 		return err
 	}
-	u.PasswordHash = string(hash)
+	u.Password = string(hash)
 	return nil
 }
 
@@ -78,25 +79,4 @@ func (u *User) IsPhoneVerified() bool {
 func (u *User) MarkPhoneVerified() {
 	now := time.Now()
 	u.PhoneVerified = &now
-}
-
-// UpdateLastLogin updates the last login timestamp
-func (u *User) UpdateLastLogin() {
-	now := time.Now()
-	u.LastLoginAt = &now
-}
-
-// GetIsActive returns the active status
-func (u *User) GetIsActive() bool {
-	return u.IsActive
-}
-
-// Activate activates the user
-func (u *User) Activate() {
-	u.IsActive = true
-}
-
-// Deactivate deactivates the user
-func (u *User) Deactivate() {
-	u.IsActive = false
 }

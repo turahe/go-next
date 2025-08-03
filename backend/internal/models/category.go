@@ -18,6 +18,7 @@ type Category struct {
 	Parent   *Category  `json:"parent,omitempty" gorm:"foreignKey:ParentID;constraint:OnDelete:SET NULL"`
 	Children []Category `json:"children,omitempty" gorm:"foreignKey:ParentID;constraint:OnDelete:CASCADE"`
 	Posts    []Post     `json:"posts,omitempty" gorm:"foreignKey:CategoryID;constraint:OnDelete:SET NULL"`
+	Media    []Media    `json:"media,omitempty" gorm:"many2many:mediables;constraint:OnDelete:CASCADE"`
 }
 
 // TableName specifies the table name for Category

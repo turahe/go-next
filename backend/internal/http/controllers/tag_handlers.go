@@ -1,14 +1,14 @@
 package controllers
 
 import (
-	"net/http"
-	"strconv"
-	"go-next/internal/http/dto"
+	"go-next/internal/dto"
 	"go-next/internal/http/requests"
 	"go-next/internal/http/responses"
 	"go-next/internal/models"
 	"go-next/internal/services"
 	"go-next/pkg/logger"
+	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )

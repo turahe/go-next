@@ -25,6 +25,7 @@ type ServiceManager struct {
 	UserRoleService UserRoleService
 	AuthService     AuthService
 	TagService      TagService
+	MenuService     MenuService
 }
 
 // NewServiceManager creates a new service manager with all services initialized
@@ -44,10 +45,11 @@ func NewServiceManager(redisService *redis.RedisService, storageService storage.
 	manager.CategoryService = NewCategoryService(redisService)
 	manager.CommentService = NewCommentService(redisService)
 	manager.MediaService = NewMediaService()
-	manager.RoleService = NewRoleService(redisService)
+	manager.RoleService = NewRoleService()
 	manager.UserRoleService = NewUserRoleService(redisService)
 	manager.AuthService = NewAuthService()
 	manager.TagService = NewTagService(redisService)
+	manager.MenuService = NewMenuService(redisService)
 
 	// Log service initialization
 	logger.Info("NewServiceManager: All services initialized successfully", "services_count", 9, "redis_available", redisService != nil, "storage_available", storageService != nil)
@@ -68,6 +70,8 @@ func InitializeServices(redisService *redis.RedisService, storageService storage
 	UserRoleSvc = manager.UserRoleService
 	AuthSvc = manager.AuthService
 	TagSvc = manager.TagService
+	MediaSvc = manager.MediaService
+	MenuSvc = manager.MenuService
 
 	// Set global service manager
 	ServiceMgr = manager
@@ -167,10 +171,12 @@ func (sm *ServiceManager) warmCategoryCache(ctx context.Context) error {
 
 // warmRoleCache warms up role-related caches
 func (sm *ServiceManager) warmRoleCache(ctx context.Context) error {
-	// Warm all roles cache
-	if _, err := sm.RoleService.GetAllRolesWithContext(ctx); err != nil {
-		return err
-	}
+	// TODO: Implement role cache warming when methods are available
+	// For now, we'll skip role cache warming since the current RoleService
+	// doesn't have GetAllRolesWithContext method
+	// if _, err := sm.RoleService.GetAllRolesWithContext(ctx); err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
@@ -281,6 +287,7 @@ func (sm *ServiceManager) HealthCheck(ctx context.Context) (map[string]interface
 		"role_service":      sm.RoleService != nil,
 		"user_role_service": sm.UserRoleService != nil,
 		"auth_service":      sm.AuthService != nil,
+		"menu_service":      sm.MenuService != nil,
 	}
 
 	health["timestamp"] = time.Now()
@@ -289,11 +296,14 @@ func (sm *ServiceManager) HealthCheck(ctx context.Context) (map[string]interface
 }
 
 // Global service manager instance
-var ServiceMgr *ServiceManager
-
-// Global service instances
-var UserSvc UserService
-var AuthSvc AuthService
+var (
+	UserSvc    UserService
+	AuthSvc    AuthService
+	MediaSvc   MediaService
+	RoleSvc    RoleService
+	MenuSvc    MenuService
+	ServiceMgr *ServiceManager
+)
 
 // Initialize global services
 func init() {
